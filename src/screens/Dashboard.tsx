@@ -1,0 +1,82 @@
+import { Tab } from '../App';
+import { goalPlan, minSpend, money, planProgress, today } from '../calc';
+import { Bar, Card, Data, Empty } from '../ui';
+
+const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+const STATUS_TEXT = {
+  ok: 'Minimo cumplido',
+  ontrack: 'Vas en camino',
+  behind: 'Vas atrasado',
+  urgent: 'Poco tiempo'
+};
+
+export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) {
+  const now = new Date();
+  const month = today().slice(0, 7);
+  const monthTx = d.txns.filter(t => t.data.date.startsWith(month));
+  const income = monthTx.filter(t => t.data.type === 'income').reduce((a, t) => a + t.data.amount, 0);
+  const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount, 0);
+  const commitments = d.plans.map(p => planProgress(p.data, now)).filter(p => !p.finished).reduce((a, p) => a + p.monthly, 0);
+
+  const byCat: Record<string, number> = {};
+  monthTx.filter(t => t.data.type === 'expense').forEach(t => { byCat[t.data.category] = (byCat[t.data.category] || 0) + t.data.amount; });
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
+
+  const wd = now.getDay(); // 5 vie, 6 sab, 0 dom, 1 lun
+  const reminderDay = [5, 6, 0, 1].includes(wd);
+  const loggedToday = d.allTxns.some(t => t.owner === d.me && t.data.date === today());
+
+  const cards = d.accounts.map(a => ({ a, ms: minSpend(a, d.allTxns, d.allPlans, now) })).filter(x => x.ms);
+
+  return (
+    <>
+      {reminderDay && !loggedToday && (
+        <div className="banner" onClick={() => go('mov')}>
+          Hoy es {DAYS[wd]}: no has registrado nada hoy. Toca para anotar tus ingresos y egresos.
+        </div>
+      )}
+
+      <div className="stats">
+        <div className="stat"><small>Ingresos del mes</small><b className="pos">{money(income)}</b></div>
+        <div className="stat"><small>Egresos del mes</small><b className="neg">{money(expense)}</b></div>
+        <div className="stat"><small>Balance</small><b className={income - expense >= 0 ? 'pos' : 'neg'}>{money(income - expense)}</b></div>
+        <div className="stat"><small>Pagos a meses / mes</small><b>{money(commitments)}</b></div>
+      </div>
+
+      <Card title="Gasto minimo de tarjetas">
+        {cards.length === 0 ? <Empty>Agrega una tarjeta de credito con dia de corte y gasto minimo en Cuentas.</Empty> : cards.map(({ a, ms }) => ms && (
+          <div key={a.id} className="row-block">
+            <div className="row"><b>{a.data.name}</b><span className={`chip ${ms.status}`}>{STATUS_TEXT[ms.status]}</span></div>
+            <Bar pct={(ms.spent / ms.min) * 100} tone={ms.status === 'urgent' || ms.status === 'behind' ? 'bad' : ms.status === 'ontrack' ? 'warn' : 'good'} />
+            <small>
+              {money(ms.spent)} de {money(ms.min)} · corte {ms.end} ({ms.daysLeft} dias)
+              {ms.remaining > 0 && <> · faltan <b>{money(ms.remaining)}</b> (~{money(ms.perDay)}/dia)</>}
+            </small>
+          </div>
+        ))}
+      </Card>
+
+      <Card title="Metas" right={<button className="link" onClick={() => go('goals')}>Ver</button>}>
+        {d.goals.length === 0 ? <Empty>Aun no tienes metas.</Empty> : d.goals.slice(0, 3).map(g => {
+          const p = goalPlan(g.data.target, g.data.saved, g.data.deadline, now);
+          return (
+            <div key={g.id} className="row-block">
+              <div className="row"><b>{g.data.name}</b><span>{p.pct.toFixed(0)}%</span></div>
+              <Bar pct={p.pct} />
+              <small>Faltan {money(p.left)}{p.perMonth !== null && <> · ahorra {money(p.perMonth)}/mes</>}</small>
+            </div>
+          );
+        })}
+      </Card>
+
+      <Card title="Egresos por categoria (mes)">
+        {cats.length === 0 ? <Empty>Sin egresos este mes.</Empty> : cats.map(([c, v]) => (
+          <div key={c} className="row-block">
+            <div className="row"><span>{c}</span><span>{money(v)}</span></div>
+            <Bar pct={(v / (cats[0][1] || 1)) * 100} tone="warn" />
+          </div>
+        ))}
+      </Card>
+    </>
+  );
+}
