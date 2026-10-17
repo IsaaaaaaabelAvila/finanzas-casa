@@ -91,3 +91,17 @@ export function spendCap(acc: Item<Account>, txns: Item<Txn>[], plans: Item<Plan
   const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return { spent, max: a.maxSpend, left: a.maxSpend - spent, pct: (spent / a.maxSpend) * 100, end: p.end, daysLeft: Math.max(0, daysBetween(t0, p.endDate)) };
 }
+
+export const inTotal = (a: Item<Account>) => a.data.inTotal ?? ['debit', 'cash', 'credit'].includes(a.data.type);
+
+/** Dinero total: suma de saldos de las cuentas marcadas como "en el total" (las tarjetas restan su deuda). */
+export function totalFunds(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[]) {
+  let total = 0, liquid = 0, cards = 0, outside = 0;
+  for (const a of accs) {
+    const b = accountBalance(a, txns, plans);
+    if (!inTotal(a)) { outside += b; continue; }
+    total += b;
+    if (a.data.type === 'credit') cards += b; else liquid += b;
+  }
+  return { total, liquid, cards, outside };
+}

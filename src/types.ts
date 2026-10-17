@@ -8,6 +8,7 @@ export interface Account {
   limit?: number;       // limite de credito
   minSpend?: number;    // gasto minimo por periodo para evitar cobro por inactividad
   maxSpend?: number;    // tope de gasto por periodo (credito)
+  inTotal?: boolean;    // cuenta dentro del total de dinero (por defecto: debito, efectivo y credito)
   feeNote?: string;
 }
 export type TxnType = 'income' | 'expense' | 'transfer' | 'adjust';
@@ -33,6 +34,7 @@ export interface Goal {
   target: number;
   saved: number;
   deadline?: string;
+  linkTotal?: boolean;  // el ahorro = total de las cuentas
 }
 export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting';
 export interface Rec<T = any> {

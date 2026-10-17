@@ -10,10 +10,11 @@ export default function Goals({ d }: { d: Data }) {
   const [saved, setSaved] = useState('');
   const [deadline, setDeadline] = useState('');
   const [shared, setShared] = useState(false);
+  const [link, setLink] = useState(false);
 
   function submit() {
     if (!name.trim() || !num(target)) return;
-    save('goal', { name: name.trim(), target: num(target), saved: num(saved), deadline: deadline || undefined }, shared ? null : d.me);
+    save('goal', { name: name.trim(), target: num(target), saved: num(saved), deadline: deadline || undefined, linkTotal: link || undefined }, shared ? null : d.me);
     setName(''); setTarget(''); setSaved(''); setDeadline(''); setOpen(false);
   }
   function contribute(id: string) {
@@ -33,6 +34,7 @@ export default function Goals({ d }: { d: Data }) {
           <Field label="Monto objetivo"><input inputMode="decimal" value={target} onChange={e => setTarget(e.target.value)} /></Field>
           <Field label="Ya llevas ahorrado"><input inputMode="decimal" value={saved} onChange={e => setSaved(e.target.value)} /></Field>
           <Field label="Fecha limite (opcional)"><input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} /></Field>
+          <label className="check"><input type="checkbox" checked={link} onChange={e => setLink(e.target.checked)} /> Ligar al total de mis cuentas (el ahorro se calcula solo)</label>
           <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Meta de la casa (la ven los dos)</label>
           <button className="primary" onClick={submit}>Guardar</button>
         </Card>
@@ -40,17 +42,18 @@ export default function Goals({ d }: { d: Data }) {
 
       {d.goals.length === 0 && <Card><Empty>Aun no hay metas.</Empty></Card>}
       {d.goals.map(g => {
-        const p = goalPlan(g.data.target, g.data.saved, g.data.deadline);
+        const savedNow = g.data.linkTotal ? d.total : g.data.saved;
+        const p = goalPlan(g.data.target, savedNow, g.data.deadline);
         return (
           <Card key={g.id}>
             <div className="row"><b>{g.data.name}</b><span>{ownerLabel(g.owner)}</span></div>
             <Bar pct={p.pct} tone={p.pct >= 100 ? 'good' : 'warn'} />
-            <div className="row"><span>{money(g.data.saved)} de {money(g.data.target)}</span><b>{p.pct.toFixed(0)}%</b></div>
+            <div className="row"><span>{money(savedNow)} de {money(g.data.target)}</span><b>{p.pct.toFixed(0)}%</b></div>
             <small>
               {p.left === 0 ? '¡Meta alcanzada!' : <>Te faltan <b>{money(p.left)}</b>{p.perMonth !== null && <> · {p.monthsLeft} meses → <b>{money(p.perMonth)}/mes</b></>}</>}
             </small>
             <div className="row-actions">
-              <button className="link" onClick={() => contribute(g.id)}>Abonar</button>
+              {!g.data.linkTotal && <button className="link" onClick={() => contribute(g.id)}>Abonar</button>}
               <button className="link danger" onClick={() => confirm('¿Borrar meta?') && remove(g.id)}>Borrar</button>
             </div>
           </Card>

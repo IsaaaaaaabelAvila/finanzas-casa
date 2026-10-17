@@ -80,7 +80,7 @@ export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) 
 
       <Card title="Metas" right={<button className="link" onClick={() => go('goals')}>Ver</button>}>
         {d.goals.length === 0 ? <Empty>Aun no tienes metas.</Empty> : d.goals.slice(0, 3).map(g => {
-          const p = goalPlan(g.data.target, g.data.saved, g.data.deadline, now);
+          const p = goalPlan(g.data.target, g.data.linkTotal ? d.total : g.data.saved, g.data.deadline, now);
           return (
             <div key={g.id} className="row-block">
               <div className="row"><b>{g.data.name}</b><span>{p.pct.toFixed(0)}%</span></div>

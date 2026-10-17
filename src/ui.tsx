@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { list, State } from './store';
+import { totalFunds } from './calc';
 import type { Account, Goal, Item, Plan, Setting, Txn } from './types';
 
 export type Scope = 'mine' | 'shared' | 'all';
@@ -14,6 +15,7 @@ export interface Data {
   allTxns: Item<Txn>[];
   allPlans: Item<Plan>[];
   setting: Item<Setting> | null;
+  total: number;
 }
 
 /** Datos visibles segun el filtro (Mio / Casa / Todo). */
@@ -25,6 +27,7 @@ export function selectData(s: State, scope: Scope): Data {
   const allPlans = list<Plan>(s, 'plan');
   return {
     me, allAccounts, allTxns, allPlans,
+    total: totalFunds(allAccounts, allTxns, allPlans).total,
     setting: list<Setting>(s, 'setting').find(x => x.owner === me) ?? null,
     accounts: allAccounts.filter(a => ok(a.owner)),
     txns: allTxns.filter(t => ok(t.owner)),
