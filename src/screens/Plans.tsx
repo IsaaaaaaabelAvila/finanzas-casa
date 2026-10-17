@@ -22,7 +22,8 @@ function PlansList({ d }: { d: Data }) {
   const cards = d.allAccounts.filter(a => a.data.type === 'credit' && (a.owner === d.me || a.owner === null));
   const accName = (id?: string) => d.allAccounts.find(a => a.id === id)?.data.name;
   const personName = (k?: string) => d.people.find(p => p.key === k)?.name;
-  const items = d.plans.map(p => ({ p, st: planStatus(p.data, nowM) })).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
+  // una compra liquidada cuyo calendario ya termino deja de mostrarse
+  const items = d.plans.map(p => ({ p, st: planStatus(p.data, nowM) })).filter(x => !(x.st.finished && x.st.schedule[x.st.schedule.length - 1] < nowM)).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
   const monthly = items.filter(x => x.st.due && !x.st.finished).reduce((a, x) => a + x.st.monthly, 0);
   const pendingMonth = items.filter(x => x.st.due && !x.st.paidThisMonth).reduce((a, x) => a + x.st.monthly, 0);
   const pending = items.reduce((a, x) => a + x.st.remainingAmount, 0);
