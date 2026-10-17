@@ -16,11 +16,13 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const month = today().slice(0, 7);
   const monthTx = d.txns.filter(t => t.data.date.startsWith(month));
   const income = monthTx.filter(t => t.data.type === 'income').reduce((a, t) => a + t.data.amount, 0);
-  const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount, 0);
+  const planBuys = d.plans.filter(p => p.owner === d.me && p.data.startDate.startsWith(month));
+  const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount, 0) + planBuys.reduce((a, p) => a + p.data.total, 0);
   const commitments = d.plans.map(p => planStatus(p.data, ym(now))).filter(s => s.due && !s.finished).reduce((a, s) => a + s.monthly, 0);
 
   const byCat: Record<string, number> = {};
   monthTx.filter(t => t.data.type === 'expense').forEach(t => { byCat[t.data.category] = (byCat[t.data.category] || 0) + t.data.amount; });
+  planBuys.forEach(p => { const c = p.data.category ?? 'Compras'; byCat[c] = (byCat[c] || 0) + p.data.total; });
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
   const wd = now.getDay(); // 5 vie, 6 sab, 0 dom, 1 lun
@@ -28,7 +30,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const loggedToday = d.allTxns.some(t => t.owner === d.me && t.data.date === today());
 
   const budget = d.setting?.data.monthlyBudget ?? 0;
-  const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0);
+  const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0) + d.allPlans.filter(p => p.owner === d.me && p.data.startDate.startsWith(month)).reduce((a, p) => a + p.data.total, 0);
   const caps = d.accounts.map(a => ({ a, c: spendCap(a, d.allTxns, d.allPlans, now) })).filter(x => x.c);
   const cards = d.accounts.map(a => ({ a, ms: minSpend(a, d.allTxns, d.allPlans, now) })).filter(x => x.ms);
 

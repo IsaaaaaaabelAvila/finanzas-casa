@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { monthLabel, money, planStatus, today, ym } from '../calc';
+import { firstPaymentMonth, monthLabel, money, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
-import type { Plan } from '../types';
+import { EXPENSE_CATS, Plan } from '../types';
 import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
 
 export default function Plans({ d }: { d: Data }) {
@@ -12,6 +12,8 @@ export default function Plans({ d }: { d: Data }) {
   const [months, setMonths] = useState('6');
   const [start, setStart] = useState(today());
   const [first, setFirst] = useState(nowM);
+  const [firstTouched, setFirstTouched] = useState(false);
+  const [category, setCategory] = useState('Compras');
   const [accountId, setAccountId] = useState('');
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
@@ -24,11 +26,15 @@ export default function Plans({ d }: { d: Data }) {
   const pendingMonth = items.filter(x => x.st.due && !x.st.paidThisMonth).reduce((a, x) => a + x.st.monthly, 0);
   const pending = items.reduce((a, x) => a + x.st.remainingAmount, 0);
 
+  const chosen = cards.find(a => a.id === (accountId || (shared ? '' : cards[0]?.id)));
+  const auto = chosen?.data.cutDay && chosen.data.payDay ? firstPaymentMonth(start, chosen.data.cutDay, chosen.data.payDay) : null;
+  const firstMonth = firstTouched || !auto ? first : auto;
+
   function submit() {
     if (!desc.trim() || !num(total)) return;
     const plan: Plan = {
       description: desc.trim(), total: num(total), months: Math.max(1, Math.round(num(months))),
-      startDate: start, firstMonth: first, paid: [],
+      startDate: start, firstMonth, paid: [], category,
       accountId: accountId || (shared ? undefined : cards[0]?.id) || undefined,
       paidBy: shared ? (payer || d.myKey || d.people[0]?.key) : undefined
     };
@@ -57,14 +63,16 @@ export default function Plans({ d }: { d: Data }) {
           <Field label="Descripcion"><input value={desc} onChange={e => setDesc(e.target.value)} placeholder="Refrigerador, celular…" /></Field>
           <Field label="Monto total"><input inputMode="decimal" value={total} onChange={e => setTotal(e.target.value)} /></Field>
           <Field label="Numero de meses"><input inputMode="numeric" value={months} onChange={e => setMonths(e.target.value)} /></Field>
-          <Field label="Fecha de compra"><input type="date" value={start} onChange={e => setStart(e.target.value)} /></Field>
-          <Field label="Mes de la primera mensualidad"><input type="month" value={first} onChange={e => setFirst(e.target.value)} /></Field>
+          <Field label="Fecha de compra"><input type="date" value={start} onChange={e => { setStart(e.target.value); setFirstTouched(false); }} /></Field>
           <Field label="Tarjeta (opcional en compras de la casa)">
-            <select value={accountId || (shared ? '' : cards[0]?.id) || ''} onChange={e => setAccountId(e.target.value)}>
+            <select value={accountId || (shared ? '' : cards[0]?.id) || ''} onChange={e => { setAccountId(e.target.value); setFirstTouched(false); }}>
               <option value="">— ninguna —</option>
               {cards.map(a => <option key={a.id} value={a.id}>{a.data.name}</option>)}
             </select>
           </Field>
+          <Field label="Mes de la primera mensualidad"><input type="month" value={firstMonth} onChange={e => { setFirst(e.target.value); setFirstTouched(true); }} /></Field>
+          {auto && !firstTouched && chosen && <p className="hint">Calculado con el corte (dia {chosen.data.cutDay}) y el pago (dia {chosen.data.payDay}) de {chosen.data.name}: la compra del {start} entra al corte de ese mes y se paga en {monthLabel(auto)}.</p>}
+          <Field label="Categoria"><select value={category} onChange={e => setCategory(e.target.value)}>{EXPENSE_CATS.map(c => <option key={c}>{c}</option>)}</select></Field>
           <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Compra comun de la casa</label>
           {shared && d.people.length > 0 && (
             <Field label="Quien la paga">

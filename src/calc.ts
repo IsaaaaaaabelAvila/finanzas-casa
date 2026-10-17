@@ -158,3 +158,13 @@ export function houseSummary(month: string, people: Person[], payrolls: Item<Pay
   const owes = debtor && creditor ? Math.min(-debtor.diff, creditor.diff) : 0;
   return { base, missing, totalIncome, totalSpent, rows, debtor, creditor, owes, settle, unassigned, duePlans };
 }
+
+/** Mes de la primera mensualidad: la compra cae en el primer corte >= fecha de compra; se paga en el primer dia de pago posterior a ese corte. */
+export function firstPaymentMonth(purchase: string, cutDay: number, payDay: number): string {
+  const d = parse(purchase);
+  let cut = cutIn(d.getFullYear(), d.getMonth(), cutDay);
+  if (d > cut) cut = cutIn(d.getFullYear(), d.getMonth() + 1, cutDay);
+  let pay = cutIn(cut.getFullYear(), cut.getMonth(), payDay);
+  if (pay <= cut) pay = cutIn(cut.getFullYear(), cut.getMonth() + 1, payDay);
+  return ym(pay);
+}

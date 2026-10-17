@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { money, today } from '../calc';
+import { firstPaymentMonth, money, today } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, INCOME_CATS, Txn, TxnType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -29,6 +29,15 @@ export default function Movements({ d }: { d: Data }) {
   const cats = type === 'income' ? INCOME_CATS : EXPENSE_CATS;
 
   const rows = d.txns.filter(t => t.data.date.startsWith(month)).sort((a, b) => b.data.date.localeCompare(a.data.date));
+
+  function toPlan(t: (typeof rows)[number]) {
+    const n = parseInt(prompt('¿A cuantos meses?') ?? '', 10);
+    if (!n || n < 2) return;
+    const acc = d.allAccounts.find(a => a.id === t.data.accountId);
+    const firstMonth = acc?.data.cutDay && acc.data.payDay ? firstPaymentMonth(t.data.date, acc.data.cutDay, acc.data.payDay) : t.data.date.slice(0, 7);
+    save('plan', { description: t.data.note || t.data.category, total: t.data.amount, months: n, startDate: t.data.date, firstMonth, paid: [], accountId: t.data.accountId, category: t.data.category, paidBy: t.data.paidBy }, t.owner);
+    remove(t.id);
+  }
 
   function submit() {
     const amt = num(amount);
@@ -111,6 +120,7 @@ export default function Movements({ d }: { d: Data }) {
               <b className={t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? 'pos' : t.data.type === 'expense' || t.data.type === 'adjust' ? 'neg' : ''}>
                 {t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? '+' : t.data.type === 'expense' ? '−' : ''}{money(t.data.amount)}
               </b>
+              {t.data.type === 'expense' && <button className="link" title="Convertir en compra a meses" onClick={() => toPlan(t)}>A meses</button>}
               <button className="x" onClick={() => confirm('¿Borrar movimiento?') && remove(t.id)}>🗑</button>
             </div>
           </div>

@@ -31,6 +31,7 @@ export interface Plan {
   firstMonth?: string;  // YYYY-MM de la primera mensualidad
   paid?: string[];      // meses (YYYY-MM) marcados como pagados
   paidBy?: string;      // clave de la persona que paga (compras de la casa)
+  category?: string;    // categoria del gasto
 }
 export interface Goal {
   name: string;
