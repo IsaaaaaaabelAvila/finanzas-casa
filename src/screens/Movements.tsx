@@ -21,6 +21,7 @@ export default function Movements({ d }: { d: Data }) {
   const [category, setCategory] = useState('');
   const [note, setNote] = useState('');
   const [shared, setShared] = useState(false);
+  const [payer, setPayer] = useState('');
 
   // cuentas disponibles: las mias y las de la casa (sin importar el filtro)
   const accs = d.allAccounts.filter(a => a.owner === d.me || a.owner === null);
@@ -38,7 +39,7 @@ export default function Movements({ d }: { d: Data }) {
       toAccountId: type === 'transfer' ? (toAccountId || accs.find(a => a.id !== acc)?.id) : undefined,
       category: type === 'transfer' ? 'Transferencia' : type === 'adjust' ? 'Ajuste' : (category || cats[cats.length - 1]),
       note: note.trim(),
-      paidBy: shared ? d.me : undefined
+      paidBy: shared ? (payer || d.myKey || d.people[0]?.key || d.me) : undefined
     };
     save('txn', t, shared ? null : d.me);
     setAmount(''); setNote(''); setOpen(false);
@@ -87,6 +88,13 @@ export default function Movements({ d }: { d: Data }) {
           )}
           <Field label="Nota"><input value={note} onChange={e => setNote(e.target.value)} /></Field>
           <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Es un movimiento comun de la casa (lo ven los dos)</label>
+          {shared && d.people.length > 0 && (
+            <Field label="Quien pago">
+              <select value={payer || d.myKey || d.people[0].key} onChange={e => setPayer(e.target.value)}>
+                {d.people.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+              </select>
+            </Field>
+          )}
           <button className="primary" onClick={submit} disabled={!num(amount) || accs.length === 0}>Guardar</button>
         </Card>
       )}
@@ -96,7 +104,7 @@ export default function Movements({ d }: { d: Data }) {
           <div key={t.id} className="tx">
             <div>
               <b>{t.data.note || t.data.category}</b>
-              <small>{t.data.date} · {t.data.category} · {accName(t.data.accountId)}{t.data.toAccountId ? ` → ${accName(t.data.toAccountId)}` : ''} · {ownerLabel(t.owner)}</small>
+              <small>{t.data.date} · {t.data.category} · {accName(t.data.accountId)}{t.data.toAccountId ? ` → ${accName(t.data.toAccountId)}` : ''} · {ownerLabel(t.owner)}{t.owner === null && t.data.paidBy ? ` · pago ${d.people.find(p => p.key === t.data.paidBy)?.name ?? ''}` : ''}</small>
             </div>
             <div className="tx-r">
               <b className={t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? 'pos' : t.data.type === 'expense' || t.data.type === 'adjust' ? 'neg' : ''}>

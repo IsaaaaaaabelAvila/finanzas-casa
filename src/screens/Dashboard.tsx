@@ -1,6 +1,6 @@
 import { Tab } from '../App';
-import { goalPlan, minSpend, money, planProgress, spendCap, today } from '../calc';
-import { Bar, Card, Data, Empty } from '../ui';
+import { goalPlan, minSpend, money, planStatus, spendCap, ym, today } from '../calc';
+import { Bar, Card, Data, Empty, Scope } from '../ui';
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 const STATUS_TEXT = {
@@ -10,13 +10,14 @@ const STATUS_TEXT = {
   urgent: 'Poco tiempo'
 };
 
-export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) {
+export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => void; scope: Scope }) {
+  const house = scope === 'shared'; // en la vista Casa no hay presupuesto, gasto minimo ni metas
   const now = new Date();
   const month = today().slice(0, 7);
   const monthTx = d.txns.filter(t => t.data.date.startsWith(month));
   const income = monthTx.filter(t => t.data.type === 'income').reduce((a, t) => a + t.data.amount, 0);
   const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount, 0);
-  const commitments = d.plans.map(p => planProgress(p.data, now)).filter(p => !p.finished).reduce((a, p) => a + p.monthly, 0);
+  const commitments = d.plans.map(p => planStatus(p.data, ym(now))).filter(s => s.due && !s.finished).reduce((a, s) => a + s.monthly, 0);
 
   const byCat: Record<string, number> = {};
   monthTx.filter(t => t.data.type === 'expense').forEach(t => { byCat[t.data.category] = (byCat[t.data.category] || 0) + t.data.amount; });
@@ -46,14 +47,14 @@ export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) 
         <div className="stat"><small>Pagos a meses / mes</small><b>{money(commitments)}</b></div>
       </div>
 
-      {budget > 0 && (
+      {!house && budget > 0 && (
         <Card title="Presupuesto del mes">
           <div className="row"><span>{money(spentAll)} de {money(budget)}</span><b className={budget - spentAll >= 0 ? 'pos' : 'neg'}>{budget - spentAll >= 0 ? `Quedan ${money(budget - spentAll)}` : `Excedido ${money(spentAll - budget)}`}</b></div>
           <Bar pct={(spentAll / budget) * 100} tone={spentAll > budget ? 'bad' : spentAll > budget * 0.8 ? 'warn' : 'good'} />
         </Card>
       )}
 
-      {caps.length > 0 && (
+      {!house && caps.length > 0 && (
         <Card title="Tope de gasto de tarjetas">
           {caps.map(({ a, c }) => c && (
             <div key={a.id} className="row-block">
@@ -65,7 +66,7 @@ export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) 
         </Card>
       )}
 
-      <Card title="Gasto minimo de tarjetas">
+      {!house && <Card title="Gasto minimo de tarjetas">
         {cards.length === 0 ? <Empty>Agrega una tarjeta de credito con dia de corte y gasto minimo en Cuentas.</Empty> : cards.map(({ a, ms }) => ms && (
           <div key={a.id} className="row-block">
             <div className="row"><b>{a.data.name}</b><span className={`chip ${ms.status}`}>{STATUS_TEXT[ms.status]}</span></div>
@@ -76,9 +77,9 @@ export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) 
             </small>
           </div>
         ))}
-      </Card>
+      </Card>}
 
-      <Card title="Metas" right={<button className="link" onClick={() => go('goals')}>Ver</button>}>
+      {!house && <Card title="Metas" right={<button className="link" onClick={() => go('goals')}>Ver</button>}>
         {d.goals.length === 0 ? <Empty>Aun no tienes metas.</Empty> : d.goals.slice(0, 3).map(g => {
           const p = goalPlan(g.data.target, g.data.linkTotal ? d.total : g.data.saved, g.data.deadline, now);
           return (
@@ -89,7 +90,7 @@ export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) 
             </div>
           );
         })}
-      </Card>
+      </Card>}
 
       <Card title="Egresos por categoria (mes)">
         {cats.length === 0 ? <Empty>Sin egresos este mes.</Empty> : cats.map(([c, v]) => (

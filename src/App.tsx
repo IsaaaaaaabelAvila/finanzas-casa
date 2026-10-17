@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { cloudEnabled, supabase } from './supabase';
-import { resetAll, setState, useStore } from './store';
+import { resetAll, save, setState, useStore } from './store';
 import { startAutoSync, syncNow } from './sync';
 import { scheduleAll } from './notifications';
 import Auth from './Auth';
@@ -10,21 +10,24 @@ import Movements from './screens/Movements';
 import Accounts from './screens/Accounts';
 import Plans from './screens/Plans';
 import Goals from './screens/Goals';
+import House from './screens/House';
 import Settings from './screens/Settings';
 
-export type Tab = 'home' | 'mov' | 'acc' | 'plans' | 'goals' | 'set';
+export type Tab = 'home' | 'mov' | 'acc' | 'house' | 'plans' | 'goals' | 'set';
 const ICONS: Record<Tab, string> = {
   home: 'M4 11l8-7 8 7v9H4z',
   mov: 'M4 8h16M16 4l4 4-4 4M20 16H4M8 12l-4 4 4 4',
   acc: 'M3 6h18v12H3zM3 10h18',
+  house: 'M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10',
   plans: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
   goals: 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8z',
   set: 'M4 7h10M18 7h2M4 17h2M10 17h10M16 4v6M8 14v6'
 };
 const TABS: { id: Tab; label: string }[] = [
   { id: 'home', label: 'Resumen' },
-  { id: 'mov', label: 'Movimientos' },
+  { id: 'mov', label: 'Movs' },
   { id: 'acc', label: 'Cuentas' },
+  { id: 'house', label: 'Casa' },
   { id: 'plans', label: 'A meses' },
   { id: 'goals', label: 'Metas' },
   { id: 'set', label: 'Ajustes' }
@@ -63,6 +66,14 @@ export default function App() {
     scheduleAll(all.accounts, all.txns, all.plans);
   }, [s.recs, signedIn]);
 
+  // Vincula mi usuario con la persona de la casa que tenga mi nombre (primera palabra, sin acentos)
+  useEffect(() => {
+    if (!signedIn || !data.peopleId || data.myKey || !s.displayName) return;
+    const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().split(/\s+/)[0];
+    const match = data.people.find(p => !p.userId && norm(p.name) === norm(s.displayName));
+    if (match) save('people', { people: data.people.map(p => (p.key === match.key ? { ...p, userId: data.me } : p)) }, null, data.peopleId);
+  }, [signedIn, data.peopleId, data.myKey, s.displayName]);
+
   if (!ready) return <div className="splash">Cargando…</div>;
   if (!signedIn) return <Auth userId={userId} />;
 
@@ -84,9 +95,10 @@ export default function App() {
         </button>
       </header>
       <main>
-        {tab === 'home' && <Dashboard d={data} go={setTab} />}
+        {tab === 'home' && <Dashboard d={data} go={setTab} scope={scope} />}
         {tab === 'mov' && <Movements d={data} />}
         {tab === 'acc' && <Accounts d={data} />}
+        {tab === 'house' && <House d={data} />}
         {tab === 'plans' && <Plans d={data} />}
         {tab === 'goals' && <Goals d={data} />}
         {tab === 'set' && <Settings d={data} onSignOut={signOut} onLocalSetup={() => setState({ me: 'local' })} />}

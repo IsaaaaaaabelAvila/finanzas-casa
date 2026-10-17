@@ -20,14 +20,17 @@ export interface Txn {
   toAccountId?: string; // destino (transferencia / pago de tarjeta)
   category: string;
   note: string;
-  paidBy?: string;      // quien pago (gastos compartidos)
+  paidBy?: string;      // clave de la persona que pago (gastos de la casa)
 }
 export interface Plan {
-  accountId: string;
+  accountId?: string;
   description: string;
   total: number;
   months: number;
-  startDate: string;
+  startDate: string;    // fecha de compra
+  firstMonth?: string;  // YYYY-MM de la primera mensualidad
+  paid?: string[];      // meses (YYYY-MM) marcados como pagados
+  paidBy?: string;      // clave de la persona que paga (compras de la casa)
 }
 export interface Goal {
   name: string;
@@ -36,7 +39,7 @@ export interface Goal {
   deadline?: string;
   linkTotal?: boolean;  // el ahorro = total de las cuentas
 }
-export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting';
+export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle';
 export interface Rec<T = any> {
   id: string;
   kind: Kind;
@@ -45,6 +48,10 @@ export interface Rec<T = any> {
   deleted: boolean;
   dirty: boolean;
 }
+export interface Person { key: string; name: string; userId?: string | null }
+export interface People { people: Person[] }
+export interface Payroll { month: string; person: string; amount: number }
+export interface Settle { month: string; from: string; to: string; amount: number; at: string }
 export interface Setting { monthlyBudget?: number }
 export interface Item<T> { id: string; owner: string | null; data: T }
 

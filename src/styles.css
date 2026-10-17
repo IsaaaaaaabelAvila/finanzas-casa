@@ -72,3 +72,10 @@ button.link.danger { color: var(--bad); }
 
 .total { border-color: var(--brand); }
 .total .big { font-family: var(--serif); font-size: 32px; margin: 4px 0 10px; color: var(--brand); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip-m { padding: 4px 10px; border-radius: 99px; font-size: 12px; background: none; color: var(--muted); }
+.chip-m.paid { background: var(--brand); color: var(--brand-fg); border-color: var(--brand); }
+.chip-m.now { border-color: var(--warn); }
+.settle { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.row input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); }

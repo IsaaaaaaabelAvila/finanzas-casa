@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { list, State } from './store';
 import { totalFunds } from './calc';
-import type { Account, Goal, Item, Plan, Setting, Txn } from './types';
+import type { Account, Goal, Item, Payroll, People, Person, Plan, Settle, Setting, Txn } from './types';
 
 export type Scope = 'mine' | 'shared' | 'all';
 
@@ -16,6 +16,11 @@ export interface Data {
   allPlans: Item<Plan>[];
   setting: Item<Setting> | null;
   total: number;
+  people: Person[];
+  peopleId: string | null;
+  myKey: string | null;
+  payrolls: Item<Payroll>[];
+  settles: Item<Settle>[];
 }
 
 /** Datos visibles segun el filtro (Mio / Casa / Todo). */
@@ -25,7 +30,12 @@ export function selectData(s: State, scope: Scope): Data {
   const allAccounts = list<Account>(s, 'account');
   const allTxns = list<Txn>(s, 'txn');
   const allPlans = list<Plan>(s, 'plan');
+  const peopleRec = list<People>(s, 'people')[0] ?? null;
+  const people = peopleRec?.data.people ?? [];
   return {
+    people, peopleId: peopleRec?.id ?? null,
+    myKey: people.find(p => p.userId === me)?.key ?? null,
+    payrolls: list<Payroll>(s, 'payroll'), settles: list<Settle>(s, 'settle'),
     me, allAccounts, allTxns, allPlans,
     total: totalFunds(allAccounts, allTxns, allPlans).total,
     setting: list<Setting>(s, 'setting').find(x => x.owner === me) ?? null,

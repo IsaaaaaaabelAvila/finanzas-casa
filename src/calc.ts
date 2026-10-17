@@ -1,4 +1,4 @@
-import type { Account, Item, Plan, Txn } from './types';
+import type { Account, Item, Payroll, Person, Plan, Settle, Txn } from './types';
 
 export const money = (n: number) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 2 }).format(n || 0);
@@ -104,4 +104,54 @@ export function totalFunds(accs: Item<Account>[], txns: Item<Txn>[], plans: Item
     if (a.data.type === 'credit') cards += b; else liquid += b;
   }
   return { total, liquid, cards, outside };
+}
+
+// ---------- Pagos a meses (mensualidades marcadas a mano) ----------
+export const ym = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+export const addMonthsYm = (m: string, n: number) => { const [y, mo] = m.split('-').map(Number); return ym(new Date(y, mo - 1 + n, 1)); };
+export const monthLabel = (m: string) => { const [y, mo] = m.split('-').map(Number); return new Date(y, mo - 1, 1).toLocaleDateString('es-MX', { month: 'short', year: '2-digit' }); };
+
+export function planSchedule(p: Plan): string[] {
+  const first = p.firstMonth ?? p.startDate.slice(0, 7);
+  return Array.from({ length: p.months }, (_, i) => addMonthsYm(first, i));
+}
+export function planStatus(p: Plan, month = ym(new Date())) {
+  const schedule = planSchedule(p);
+  const paidSet = new Set(p.paid ?? []);
+  const paidCount = schedule.filter(m => paidSet.has(m)).length;
+  const monthly = p.total / p.months;
+  return {
+    schedule, paidCount, monthly,
+    due: schedule.includes(month), paidThisMonth: paidSet.has(month),
+    remainingMonths: p.months - paidCount, remainingAmount: monthly * (p.months - paidCount),
+    finished: paidCount >= p.months
+  };
+}
+
+// ---------- Reparto de la casa ----------
+export interface HouseRow { key: string; name: string; income: number; pct: number; cash: number; installments: number; paid: number; should: number; diff: number }
+export function houseSummary(month: string, people: Person[], payrolls: Item<Payroll>[], txns: Item<Txn>[], plans: Item<Plan>[], settles: Item<Settle>[]) {
+  const months = [...new Set(payrolls.map(p => p.data.month))].sort();
+  const base = months.includes(month) ? month : months.filter(m => m < month).pop() ?? null;
+  const incomeOf = (k: string) => payrolls.filter(p => p.data.month === base && p.data.person === k).reduce((a, p) => a + p.data.amount, 0);
+  const totalIncome = people.reduce((a, p) => a + incomeOf(p.key), 0);
+  const shared = txns.filter(t => t.owner === null && t.data.type === 'expense' && t.data.date.startsWith(month));
+  const duePlans = plans.filter(p => p.owner === null && planStatus(p.data, month).due);
+  const keys = new Set(people.map(p => p.key));
+  const unassigned = shared.filter(t => !t.data.paidBy || !keys.has(t.data.paidBy)).reduce((a, t) => a + t.data.amount, 0)
+    + duePlans.filter(p => !p.data.paidBy || !keys.has(p.data.paidBy)).reduce((a, p) => a + p.data.total / p.data.months, 0);
+  const rows: HouseRow[] = people.map(p => {
+    const income = incomeOf(p.key);
+    const cash = shared.filter(t => t.data.paidBy === p.key).reduce((a, t) => a + t.data.amount, 0);
+    const installments = duePlans.filter(pl => pl.data.paidBy === p.key).reduce((a, pl) => a + pl.data.total / pl.data.months, 0);
+    return { key: p.key, name: p.name, income, pct: totalIncome > 0 ? income / totalIncome : 1 / Math.max(1, people.length), cash, installments, paid: cash + installments, should: 0, diff: 0 };
+  });
+  const totalSpent = rows.reduce((a, r) => a + r.paid, 0);
+  rows.forEach(r => { r.should = totalSpent * r.pct; r.diff = r.paid - r.should; });
+  const settle = settles.find(s => s.data.month === month) ?? null;
+  // quien debe (diff negativo) y a quien
+  const debtor = rows.filter(r => r.diff < -0.005).sort((a, b) => a.diff - b.diff)[0] ?? null;
+  const creditor = rows.filter(r => r.diff > 0.005).sort((a, b) => b.diff - a.diff)[0] ?? null;
+  const owes = debtor && creditor ? Math.min(-debtor.diff, creditor.diff) : 0;
+  return { base, totalIncome, totalSpent, rows, debtor, creditor, owes, settle, unassigned, duePlans };
 }
