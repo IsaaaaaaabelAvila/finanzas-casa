@@ -1,4 +1,4 @@
-import type { Account, Item, Payroll, Person, Plan, Settle, Txn } from './types';
+import type { Account, Item, LedgerItem, Payroll, Person, Plan, Settle, Txn } from './types';
 
 export const money = (n: number) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 2 }).format(n || 0);
@@ -167,4 +167,18 @@ export function firstPaymentMonth(purchase: string, cutDay: number, payDay: numb
   let pay = cutIn(cut.getFullYear(), cut.getMonth(), payDay);
   if (pay <= cut) pay = cutIn(cut.getFullYear(), cut.getMonth() + 1, payDay);
   return ym(pay);
+}
+
+// ---------- Deudas con personas ----------
+export function ledgerStatus(i: LedgerItem, month = ym(new Date())) {
+  if (i.kind === 'lump') {
+    const left = Math.max(0, (i.amount ?? 0) - (i.settled ?? 0));
+    return { left, monthly: 0, due: false, paidThisMonth: false, paidCount: 0, schedule: [] as string[], remainingMonths: 0, finished: left <= 0.005 };
+  }
+  const months = i.months ?? 0;
+  const schedule = Array.from({ length: months }, (_, k) => addMonthsYm(i.firstMonth ?? month, k));
+  const paid = new Set(i.paid ?? []);
+  const paidCount = schedule.filter(m => paid.has(m)).length;
+  const monthly = i.monthly ?? 0;
+  return { left: monthly * (months - paidCount), monthly, due: schedule.includes(month), paidThisMonth: paid.has(month), paidCount, schedule, remainingMonths: months - paidCount, finished: paidCount >= months };
 }

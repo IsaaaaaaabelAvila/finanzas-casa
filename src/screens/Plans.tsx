@@ -3,8 +3,9 @@ import { firstPaymentMonth, monthLabel, money, planStatus, today, ym } from '../
 import { remove, save } from '../store';
 import { EXPENSE_CATS, Plan } from '../types';
 import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
+import Debts from './Debts';
 
-export default function Plans({ d }: { d: Data }) {
+function PlansList({ d }: { d: Data }) {
   const nowM = ym(new Date());
   const [open, setOpen] = useState(false);
   const [desc, setDesc] = useState('');
@@ -107,6 +108,19 @@ export default function Plans({ d }: { d: Data }) {
           <div className="row-actions"><button className="link danger" onClick={() => confirm('¿Borrar?') && remove(p.id)}>Borrar</button></div>
         </Card>
       ))}
+    </>
+  );
+}
+
+export default function Plans({ d }: { d: Data }) {
+  const [view, setView] = useState<'plans' | 'debts'>('plans');
+  return (
+    <>
+      <div className="seg" style={{ marginBottom: 12 }}>
+        <button className={view === 'plans' ? 'on' : ''} onClick={() => setView('plans')}>Compras a meses</button>
+        <button className={view === 'debts' ? 'on' : ''} onClick={() => setView('debts')}>Deudas con personas</button>
+      </div>
+      {view === 'plans' ? <PlansList d={d} /> : <Debts d={d} />}
     </>
   );
 }

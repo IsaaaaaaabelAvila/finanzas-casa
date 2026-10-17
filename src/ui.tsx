@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { list, State } from './store';
 import { totalFunds } from './calc';
-import type { Account, Goal, Item, Payroll, People, Person, Plan, Settle, Setting, Txn } from './types';
+import type { Account, Goal, Item, LedgerItem, Payroll, People, Person, Plan, Settle, Setting, Txn } from './types';
 
 export type Scope = 'mine' | 'shared' | 'all';
 
@@ -21,6 +21,7 @@ export interface Data {
   myKey: string | null;
   payrolls: Item<Payroll>[];
   settles: Item<Settle>[];
+  ledger: Item<LedgerItem>[];
 }
 
 /** Datos visibles segun el filtro (Mio / Casa / Todo). */
@@ -34,6 +35,7 @@ export function selectData(s: State, scope: Scope): Data {
   const people = peopleRec?.data.people ?? [];
   return {
     people, peopleId: peopleRec?.id ?? null,
+    ledger: list<LedgerItem>(s, 'ledger').filter(l => l.owner === me),
     myKey: people.find(p => p.userId === me)?.key ?? null,
     payrolls: list<Payroll>(s, 'payroll'), settles: list<Settle>(s, 'settle'),
     me, allAccounts, allTxns, allPlans,

@@ -28,7 +28,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'mov', label: 'Movs' },
   { id: 'acc', label: 'Cuentas' },
   { id: 'house', label: 'Casa' },
-  { id: 'plans', label: 'A meses' },
+  { id: 'plans', label: 'Meses' },
   { id: 'goals', label: 'Metas' },
   { id: 'set', label: 'Ajustes' }
 ];

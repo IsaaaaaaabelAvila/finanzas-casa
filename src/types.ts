@@ -40,7 +40,7 @@ export interface Goal {
   deadline?: string;
   linkTotal?: boolean;  // el ahorro = total de las cuentas
 }
-export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle';
+export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle' | 'ledger';
 export interface Rec<T = any> {
   id: string;
   kind: Kind;
@@ -53,6 +53,16 @@ export interface Person { key: string; name: string; userId?: string | null }
 export interface People { people: Person[] }
 export interface Payroll { month: string; person: string; amount: number; auto?: boolean }
 export interface Settle { month: string; from: string; to: string; amount: number; at: string }
+export interface LedgerItem {
+  person: string;                 // persona (texto libre)
+  dir: 'owed' | 'owe';            // owed = me deben, owe = yo debo
+  concept: string;
+  card?: string;                  // tarjeta con la que se compro
+  kind: 'installments' | 'lump';  // a meses o monto unico
+  monthly?: number; months?: number; firstMonth?: string; paid?: string[];
+  amount?: number; settled?: number;  // monto unico y lo ya cobrado/pagado
+  aside?: boolean;                // deuda aparte (no se cobra activamente)
+}
 export interface Setting { monthlyBudget?: number }
 export interface Item<T> { id: string; owner: string | null; data: T }
 
