@@ -22,10 +22,8 @@ export default function Movements({ d }: { d: Data }) {
   const [note, setNote] = useState('');
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
-  // gasto que pago otra persona y yo le debo (se suma a mi cuenta de deudas y a "Yo debo")
-  const [owedBy, setOwedBy] = useState(false);
+  // al elegir una cuenta de deudas, el egreso es algo que pago otra persona y yo le debo (aparece en "Yo debo")
   const [owedPerson, setOwedPerson] = useState('Iván');
-  const [share, setShare] = useState('');
   const [owedMonths, setOwedMonths] = useState('1');
   const [owedFirst, setOwedFirst] = useState(addMonthsYm(ym(new Date()), 1));
   const [owedCard, setOwedCard] = useState('');
@@ -35,9 +33,11 @@ export default function Movements({ d }: { d: Data }) {
   const accName = (id?: string) => d.allAccounts.find(a => a.id === id)?.data.name ?? '—';
   const cats = type === 'income' ? INCOME_CATS : EXPENSE_CATS;
 
-  const debtAcc = d.allAccounts.find(a => a.data.type === 'other' && /deuda/i.test(a.data.name) && (a.owner === d.me || a.owner === null)) ?? d.allAccounts.find(a => a.data.type === 'other' && a.owner === d.me);
+  const selectedAcc = accs.find(a => a.id === (accountId || accs[0]?.id));
+  const isDebtAcc = (a?: (typeof accs)[number]) => !!a && a.data.type === 'other' && (/deuda/i.test(a.data.name) || a.data.initial < 0);
+  const debtAcc = isDebtAcc(selectedAcc) ? selectedAcc : undefined;
   const knownPersons = [...new Set(d.ledger.map(l => l.data.person))];
-  const useOwed = type === 'expense' && !shared && owedBy;
+  const useOwed = type === 'expense' && !shared && !!debtAcc;
 
   const rows = d.txns.filter(t => t.data.date.startsWith(month)).sort((a, b) => b.data.date.localeCompare(a.data.date));
 
@@ -51,9 +51,8 @@ export default function Movements({ d }: { d: Data }) {
   }
 
   function submitOwed() {
-    const total = num(amount);
-    const mine = num(share) || total;
-    if (!total || !debtAcc || !owedPerson.trim()) return;
+    const mine = num(amount);
+    if (!mine || !debtAcc || !owedPerson.trim()) return;
     const concept = note.trim() || category || EXPENSE_CATS[EXPENSE_CATS.length - 1];
     const cat = category || EXPENSE_CATS[EXPENSE_CATS.length - 1];
     // el gasto cuenta como mio (mi parte) y aumenta mi deuda
@@ -64,7 +63,7 @@ export default function Movements({ d }: { d: Data }) {
     } else {
       save('ledger', { person: owedPerson.trim(), dir: 'owe', concept, kind: 'lump', amount: mine, settled: 0 }, d.me);
     }
-    setAmount(''); setNote(''); setShare(''); setOpen(false);
+    setAmount(''); setNote(''); setOpen(false);
   }
 
   function submit() {
@@ -104,11 +103,11 @@ export default function Movements({ d }: { d: Data }) {
           </div>
           <Field label={type === 'adjust' ? 'Monto del ajuste (+ suma, - resta al saldo)' : 'Monto'}><input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" /></Field>
           <Field label="Fecha"><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
-          {!useOwed && <Field label={type === 'transfer' ? 'Desde la cuenta' : 'Cuenta'}>
+          <Field label={type === 'transfer' ? 'Desde la cuenta' : 'Cuenta'}>
             <select value={accountId || accs[0]?.id || ''} onChange={e => setAccountId(e.target.value)}>
               {accs.map(a => <option key={a.id} value={a.id}>{a.data.name} ({ownerLabel(a.owner)})</option>)}
             </select>
-          </Field>}
+          </Field>
           {type === 'transfer' && (
             <Field label="Hacia la cuenta (para pagar una tarjeta, elige la tarjeta)">
               <select value={toAccountId} onChange={e => setToAccountId(e.target.value)}>
@@ -126,33 +125,22 @@ export default function Movements({ d }: { d: Data }) {
           )}
           {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && <p className="hint">Esta nomina se refleja sola en Casa para calcular el porcentaje (solo se comparte el total del mes).</p>}
           <Field label="Nota"><input value={note} onChange={e => setNote(e.target.value)} /></Field>
-          {type === 'expense' && !shared && (
-            <label className="check"><input type="checkbox" checked={owedBy} onChange={e => setOwedBy(e.target.checked)} /> Lo pago otra persona y yo se lo debo (aparece en "Yo debo")</label>
-          )}
           {useOwed && (
             <>
-              {!debtAcc && <p className="error">Crea primero una cuenta de tipo "Prestamo / deuda" (por ejemplo "Deudas") para llevar lo que debes.</p>}
-              {debtAcc && <p className="hint">El gasto se suma a tu cuenta "{debtAcc.data.name}" y se crea la deuda para pagarla por mensualidades.</p>}
+              <p className="hint">Como la cuenta es "{debtAcc?.data.name}", este egreso es algo que pago otra persona y tu le debes: se suma a esa cuenta y se crea la deuda en "Yo debo". El monto es lo que tu debes.</p>
               <Field label="Quien lo pago"><input list="personas-mov" value={owedPerson} onChange={e => setOwedPerson(e.target.value)} /></Field>
               <datalist id="personas-mov">{knownPersons.map(p => <option key={p} value={p} />)}</datalist>
-              <Field label="Mi parte (lo que yo debo; vacio = todo el monto)">
-                <input inputMode="decimal" value={share} onChange={e => setShare(e.target.value)} placeholder={amount || '0.00'} />
-              </Field>
-              <div className="row-actions" style={{ justifyContent: 'flex-start', marginTop: -6 }}>
-                <button className="link" onClick={() => setShare('')}>Todo</button>
-                <button className="link" onClick={() => setShare(String(Math.round((num(amount) / 2) * 100) / 100))}>Mitad</button>
-              </div>
               <Field label="Meses para pagarlo (1 = un solo pago)"><input inputMode="numeric" value={owedMonths} onChange={e => setOwedMonths(e.target.value)} /></Field>
               {num(owedMonths) > 1 && (
                 <>
                   <Field label="Mes de la primera mensualidad"><input type="month" value={owedFirst} onChange={e => setOwedFirst(e.target.value)} /></Field>
                   <Field label="Tarjeta (opcional)"><input value={owedCard} onChange={e => setOwedCard(e.target.value)} placeholder="Invex, BBVA…" /></Field>
-                  <p className="hint">Mensualidad: {money((num(share) || num(amount)) / Math.max(1, Math.round(num(owedMonths))))}</p>
+                  <p className="hint">Mensualidad: {money(num(amount) / Math.max(1, Math.round(num(owedMonths))))}</p>
                 </>
               )}
             </>
           )}
-          <label className="check"><input type="checkbox" checked={shared} onChange={e => { setShared(e.target.checked); if (e.target.checked) setOwedBy(false); }} /> Es un movimiento comun de la casa (lo ven los dos)</label>
+          <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Es un movimiento comun de la casa (lo ven los dos)</label>
           {shared && d.people.length > 0 && (
             <Field label="Quien pago">
               <select value={payer || d.myKey || d.people[0].key} onChange={e => setPayer(e.target.value)}>
@@ -160,7 +148,7 @@ export default function Movements({ d }: { d: Data }) {
               </select>
             </Field>
           )}
-          <button className="primary" onClick={submit} disabled={!num(amount) || accs.length === 0 || (useOwed && !debtAcc)}>Guardar</button>
+          <button className="primary" onClick={submit} disabled={!num(amount) || accs.length === 0}>Guardar</button>
         </Card>
       )}
 
