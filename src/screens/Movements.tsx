@@ -86,6 +86,7 @@ export default function Movements({ d }: { d: Data }) {
               </select>
             </Field>
           )}
+          {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && <p className="hint">Esta nomina se refleja sola en Casa para calcular el porcentaje (solo se comparte el total del mes).</p>}
           <Field label="Nota"><input value={note} onChange={e => setNote(e.target.value)} /></Field>
           <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Es un movimiento comun de la casa (lo ven los dos)</label>
           {shared && d.people.length > 0 && (

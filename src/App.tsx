@@ -74,6 +74,25 @@ export default function App() {
     if (match) save('people', { people: data.people.map(p => (p.key === match.key ? { ...p, userId: data.me } : p)) }, null, data.peopleId);
   }, [signedIn, data.peopleId, data.myKey, s.displayName]);
 
+  // Mi nomina personal (ingresos con categoria "Nomina") se refleja sola en Casa; solo se comparte el total del mes
+  useEffect(() => {
+    if (!signedIn || !data.myKey) return;
+    const all = selectData(s, 'all');
+    const totals: Record<string, number> = {};
+    for (const t of all.allTxns) if (t.owner === all.me && t.data.type === 'income' && t.data.category === 'Nomina') {
+      const m = t.data.date.slice(0, 7);
+      totals[m] = (totals[m] ?? 0) + t.data.amount;
+    }
+    const mine = all.payrolls.filter(p => p.data.person === data.myKey);
+    for (const [month, amount] of Object.entries(totals)) {
+      const total = Math.round(amount * 100) / 100;
+      const cur = mine.find(p => p.data.month === month);
+      if (!cur || !cur.data.auto || cur.data.amount !== total) save('payroll', { month, person: data.myKey, amount: total, auto: true }, null, cur?.id);
+    }
+    // si borre toda mi nomina de un mes que era automatica, vuelve a cero
+    for (const cur of mine) if (cur.data.auto && !(cur.data.month in totals) && cur.data.amount !== 0) save('payroll', { ...cur.data, amount: 0 }, null, cur.id);
+  }, [s.recs, signedIn, data.myKey]);
+
   if (!ready) return <div className="splash">Cargando…</div>;
   if (!signedIn) return <Auth userId={userId} />;
 

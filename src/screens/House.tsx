@@ -56,16 +56,18 @@ export default function House({ d }: { d: Data }) {
         {d.people.map(p => {
           const current = d.payrolls.find(x => x.data.month === month && x.data.person === p.key);
           const val = edit[p.key] ?? (current ? String(current.data.amount) : '');
+          const auto = Boolean(current?.data.auto);
           return (
             <div key={p.key} className="row" style={{ marginBottom: 8 }}>
               <span style={{ minWidth: 70 }}>{p.name}</span>
-              <input inputMode="decimal" value={val} placeholder="0.00" onChange={e => setEdit(s => ({ ...s, [p.key]: e.target.value }))} />
-              <button onClick={() => savePayroll(p.key)} disabled={edit[p.key] === undefined}>Guardar</button>
+              <input inputMode="decimal" value={val} placeholder="0.00" disabled={auto} onChange={e => setEdit(s => ({ ...s, [p.key]: e.target.value }))} />
+              {auto ? <small>automatica</small> : <button onClick={() => savePayroll(p.key)} disabled={edit[p.key] === undefined}>Guardar</button>}
             </div>
           );
         })}
-        {sum.base && sum.base !== month && <p className="hint">Este mes aun no tiene nomina; el porcentaje usa la de {monthLabel(sum.base)}.</p>}
-        {!sum.base && <p className="hint">Captura la nomina de cada quien para calcular el porcentaje.</p>}
+        <p className="hint">La nomina se toma sola de los ingresos con categoria "Nomina" que cada quien registra en su cuenta. Tambien puedes capturarla aqui a mano.</p>
+        {sum.missing.length > 0 && sum.base !== month && <p className="hint">Falta la nomina de {sum.missing.join(' y ')} en {monthLabel(month)}{sum.base ? `; mientras tanto el porcentaje usa el de ${monthLabel(sum.base)}.` : '.'}</p>}
+        {sum.missing.length > 0 && !sum.base && <p className="hint">Aun no hay un mes con la nomina de todos para calcular el porcentaje.</p>}
         {sum.totalIncome > 0 && (
           <>
             <Bar pct={sum.rows[0].pct * 100} />

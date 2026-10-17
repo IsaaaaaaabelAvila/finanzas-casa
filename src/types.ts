@@ -50,7 +50,7 @@ export interface Rec<T = any> {
 }
 export interface Person { key: string; name: string; userId?: string | null }
 export interface People { people: Person[] }
-export interface Payroll { month: string; person: string; amount: number }
+export interface Payroll { month: string; person: string; amount: number; auto?: boolean }
 export interface Settle { month: string; from: string; to: string; amount: number; at: string }
 export interface Setting { monthlyBudget?: number }
 export interface Item<T> { id: string; owner: string | null; data: T }

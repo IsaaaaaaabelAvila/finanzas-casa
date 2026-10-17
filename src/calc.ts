@@ -131,8 +131,11 @@ export function planStatus(p: Plan, month = ym(new Date())) {
 // ---------- Reparto de la casa ----------
 export interface HouseRow { key: string; name: string; income: number; pct: number; cash: number; installments: number; paid: number; should: number; diff: number }
 export function houseSummary(month: string, people: Person[], payrolls: Item<Payroll>[], txns: Item<Txn>[], plans: Item<Plan>[], settles: Item<Settle>[]) {
+  const amountIn = (m: string, k: string) => payrolls.filter(p => p.data.month === m && p.data.person === k).reduce((a, p) => a + p.data.amount, 0);
+  const complete = (m: string) => people.length > 0 && people.every(p => amountIn(m, p.key) > 0);
   const months = [...new Set(payrolls.map(p => p.data.month))].sort();
-  const base = months.includes(month) ? month : months.filter(m => m < month).pop() ?? null;
+  const base = complete(month) ? month : months.filter(m => m < month && complete(m)).pop() ?? null;
+  const missing = people.filter(p => amountIn(month, p.key) <= 0).map(p => p.name);
   const incomeOf = (k: string) => payrolls.filter(p => p.data.month === base && p.data.person === k).reduce((a, p) => a + p.data.amount, 0);
   const totalIncome = people.reduce((a, p) => a + incomeOf(p.key), 0);
   const shared = txns.filter(t => t.owner === null && t.data.type === 'expense' && t.data.date.startsWith(month));
@@ -153,5 +156,5 @@ export function houseSummary(month: string, people: Person[], payrolls: Item<Pay
   const debtor = rows.filter(r => r.diff < -0.005).sort((a, b) => a.diff - b.diff)[0] ?? null;
   const creditor = rows.filter(r => r.diff > 0.005).sort((a, b) => b.diff - a.diff)[0] ?? null;
   const owes = debtor && creditor ? Math.min(-debtor.diff, creditor.diff) : 0;
-  return { base, totalIncome, totalSpent, rows, debtor, creditor, owes, settle, unassigned, duePlans };
+  return { base, missing, totalIncome, totalSpent, rows, debtor, creditor, owes, settle, unassigned, duePlans };
 }
