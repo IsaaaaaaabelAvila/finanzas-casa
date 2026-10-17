@@ -36,8 +36,9 @@ export default function Movements({ d }: { d: Data }) {
     const t: Txn = {
       type, amount: amt, date, accountId: acc,
       toAccountId: type === 'transfer' ? (toAccountId || accs.find(a => a.id !== acc)?.id) : undefined,
-      category: type === 'transfer' ? 'Transferencia' : (category || cats[cats.length - 1]),
-      note: note.trim()
+      category: type === 'transfer' ? 'Transferencia' : type === 'adjust' ? 'Ajuste' : (category || cats[cats.length - 1]),
+      note: note.trim(),
+      paidBy: shared ? d.me : undefined
     };
     save('txn', t, shared ? null : d.me);
     setAmount(''); setNote(''); setOpen(false);
@@ -56,13 +57,13 @@ export default function Movements({ d }: { d: Data }) {
         <Card title="Nuevo movimiento">
           {accs.length === 0 && <p className="error">Primero crea una cuenta en la pestana Cuentas.</p>}
           <div className="seg">
-            {(['expense', 'income', 'transfer'] as TxnType[]).map(k => (
+            {(['expense', 'income', 'transfer', 'adjust'] as TxnType[]).map(k => (
               <button key={k} className={type === k ? 'on' : ''} onClick={() => { setType(k); setCategory(''); }}>
-                {k === 'expense' ? 'Egreso' : k === 'income' ? 'Ingreso' : 'Transferencia / pago tarjeta'}
+                {k === 'expense' ? 'Egreso' : k === 'income' ? 'Ingreso' : k === 'transfer' ? 'Transfer. / pago tarjeta' : 'Ajuste'}
               </button>
             ))}
           </div>
-          <Field label="Monto"><input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" /></Field>
+          <Field label={type === 'adjust' ? 'Monto del ajuste (+ suma, - resta al saldo)' : 'Monto'}><input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" /></Field>
           <Field label="Fecha"><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
           <Field label={type === 'transfer' ? 'Desde la cuenta' : 'Cuenta'}>
             <select value={accountId || accs[0]?.id || ''} onChange={e => setAccountId(e.target.value)}>
@@ -77,7 +78,7 @@ export default function Movements({ d }: { d: Data }) {
               </select>
             </Field>
           )}
-          {type !== 'transfer' && (
+          {type !== 'transfer' && type !== 'adjust' && (
             <Field label="Categoria">
               <select value={category || cats[cats.length - 1]} onChange={e => setCategory(e.target.value)}>
                 {cats.map(c => <option key={c}>{c}</option>)}
@@ -98,8 +99,8 @@ export default function Movements({ d }: { d: Data }) {
               <small>{t.data.date} · {t.data.category} · {accName(t.data.accountId)}{t.data.toAccountId ? ` → ${accName(t.data.toAccountId)}` : ''} · {ownerLabel(t.owner)}</small>
             </div>
             <div className="tx-r">
-              <b className={t.data.type === 'income' ? 'pos' : t.data.type === 'expense' ? 'neg' : ''}>
-                {t.data.type === 'income' ? '+' : t.data.type === 'expense' ? '−' : ''}{money(t.data.amount)}
+              <b className={t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? 'pos' : t.data.type === 'expense' || t.data.type === 'adjust' ? 'neg' : ''}>
+                {t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? '+' : t.data.type === 'expense' ? '−' : ''}{money(t.data.amount)}
               </b>
               <button className="x" onClick={() => confirm('¿Borrar movimiento?') && remove(t.id)}>🗑</button>
             </div>

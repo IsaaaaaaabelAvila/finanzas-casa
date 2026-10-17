@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { cloudEnabled } from '../supabase';
-import { getState, setState, useStore } from '../store';
+import { getState, save, setState, useStore } from '../store';
 import { syncNow } from '../sync';
 import { getNotifSettings, isNative, requestPermission, saveNotifSettings } from '../notifications';
-import { Card, Data } from '../ui';
+import { Card, Data, num } from '../ui';
 
 export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSignOut: () => void; onLocalSetup: () => void }) {
   const s = useStore();
   const [cfg, setCfg] = useState(getNotifSettings());
   const [msg, setMsg] = useState('');
-  void d; void onLocalSetup;
+  void onLocalSetup;
+  const [budget, setBudget] = useState(d.setting?.data.monthlyBudget ? String(d.setting.data.monthlyBudget) : '');
 
   const update = (p: Partial<typeof cfg>) => { const n = { ...cfg, ...p }; setCfg(n); saveNotifSettings(n); setState({}, false); };
 
@@ -42,6 +43,13 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
         {cloudEnabled && <button className="primary" onClick={syncNow} disabled={s.syncing}>{s.syncing ? 'Sincronizando…' : 'Sincronizar ahora'}</button>}
         {s.inviteCode && <p>Codigo para invitar a tu pareja: <b className="code">{s.inviteCode}</b></p>}
         <p className="hint">Se sincroniza solo al abrir la app, al volver a tener internet, despues de cada cambio y cada minuto. Sin internet todo se guarda en el dispositivo y se sube despues.</p>
+      </Card>
+
+      <Card title="Presupuesto mensual">
+        <label className="field"><span>Maximo a gastar al mes (egresos propios + de la casa)</span>
+          <input inputMode="decimal" value={budget} onChange={e => setBudget(e.target.value)} placeholder="20000" />
+        </label>
+        <button onClick={() => { save('setting', { monthlyBudget: num(budget) }, d.me, d.setting?.id); setMsg('Presupuesto guardado'); }}>Guardar presupuesto</button>
       </Card>
 
       <Card title="Recordatorios">

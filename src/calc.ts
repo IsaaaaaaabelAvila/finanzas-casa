@@ -28,6 +28,7 @@ export function accountBalance(acc: Item<Account>, txns: Item<Txn>[], plans: Ite
     const x = t.data;
     if (x.type === 'income' && x.accountId === acc.id) bal += x.amount;
     if (x.type === 'expense' && x.accountId === acc.id) bal -= x.amount;
+    if (x.type === 'adjust' && x.accountId === acc.id) bal += x.amount;
     if (x.type === 'transfer') {
       if (x.accountId === acc.id) bal -= x.amount;
       if (x.toAccountId === acc.id) bal += x.amount;
@@ -77,4 +78,16 @@ export function goalPlan(target: number, saved: number, deadline?: string, now =
     perMonth = left / monthsLeft;
   }
   return { left, pct, perMonth, monthsLeft };
+}
+
+/** Gasto del periodo actual vs tope maximo (tarjetas con maxSpend). */
+export function spendCap(acc: Item<Account>, txns: Item<Txn>[], plans: Item<Plan>[], now = new Date()) {
+  const a = acc.data;
+  if (a.type !== 'credit' || !a.cutDay || !a.maxSpend) return null;
+  const p = period(a.cutDay, now);
+  let spent = 0;
+  for (const t of txns) if (t.data.type === 'expense' && t.data.accountId === acc.id && t.data.date >= p.start && t.data.date <= p.end) spent += t.data.amount;
+  for (const pl of plans) if (pl.data.accountId === acc.id && pl.data.startDate >= p.start && pl.data.startDate <= p.end) spent += pl.data.total;
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return { spent, max: a.maxSpend, left: a.maxSpend - spent, pct: (spent / a.maxSpend) * 100, end: p.end, daysLeft: Math.max(0, daysBetween(t0, p.endDate)) };
 }

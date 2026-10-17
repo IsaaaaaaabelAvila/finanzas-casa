@@ -1,4 +1,4 @@
-export type AccountType = 'debit' | 'credit' | 'cash';
+export type AccountType = 'debit' | 'credit' | 'cash' | 'investment' | 'other';
 export interface Account {
   name: string;
   type: AccountType;
@@ -7,9 +7,10 @@ export interface Account {
   payDay?: number;      // dia limite de pago (credito)
   limit?: number;       // limite de credito
   minSpend?: number;    // gasto minimo por periodo para evitar cobro por inactividad
+  maxSpend?: number;    // tope de gasto por periodo (credito)
   feeNote?: string;
 }
-export type TxnType = 'income' | 'expense' | 'transfer';
+export type TxnType = 'income' | 'expense' | 'transfer' | 'adjust';
 export interface Txn {
   type: TxnType;
   amount: number;
@@ -18,6 +19,7 @@ export interface Txn {
   toAccountId?: string; // destino (transferencia / pago de tarjeta)
   category: string;
   note: string;
+  paidBy?: string;      // quien pago (gastos compartidos)
 }
 export interface Plan {
   accountId: string;
@@ -32,7 +34,7 @@ export interface Goal {
   saved: number;
   deadline?: string;
 }
-export type Kind = 'account' | 'txn' | 'plan' | 'goal';
+export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting';
 export interface Rec<T = any> {
   id: string;
   kind: Kind;
@@ -41,7 +43,8 @@ export interface Rec<T = any> {
   deleted: boolean;
   dirty: boolean;
 }
+export interface Setting { monthlyBudget?: number }
 export interface Item<T> { id: string; owner: string | null; data: T }
 
-export const INCOME_CATS = ['Sueldo', 'Freelance', 'Regalo', 'Reembolso', 'Otro ingreso'];
-export const EXPENSE_CATS = ['Casa/Renta', 'Servicios', 'Super', 'Comida fuera', 'Transporte', 'Salud', 'Ocio', 'Ropa', 'Suscripciones', 'Educacion', 'Otro'];
+export const INCOME_CATS = ['Nomina', 'Rendimientos', 'Freelance', 'Reembolso', 'Regalo', 'Otro ingreso'];
+export const EXPENSE_CATS = ['Vivienda', 'Servicios', 'Super', 'Comida fuera', 'Transporte', 'Salud', 'Suscripciones', 'Compras', 'Ropa', 'Ocio', 'Regalos', 'Educacion', 'Comisiones', 'Mascotas', 'Otros'];

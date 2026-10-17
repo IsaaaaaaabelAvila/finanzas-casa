@@ -1,5 +1,5 @@
 import { Tab } from '../App';
-import { goalPlan, minSpend, money, planProgress, today } from '../calc';
+import { goalPlan, minSpend, money, planProgress, spendCap, today } from '../calc';
 import { Bar, Card, Data, Empty } from '../ui';
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
@@ -26,6 +26,9 @@ export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) 
   const reminderDay = [5, 6, 0, 1].includes(wd);
   const loggedToday = d.allTxns.some(t => t.owner === d.me && t.data.date === today());
 
+  const budget = d.setting?.data.monthlyBudget ?? 0;
+  const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0);
+  const caps = d.accounts.map(a => ({ a, c: spendCap(a, d.allTxns, d.allPlans, now) })).filter(x => x.c);
   const cards = d.accounts.map(a => ({ a, ms: minSpend(a, d.allTxns, d.allPlans, now) })).filter(x => x.ms);
 
   return (
@@ -42,6 +45,25 @@ export default function Dashboard({ d, go }: { d: Data; go: (t: Tab) => void }) 
         <div className="stat"><small>Balance</small><b className={income - expense >= 0 ? 'pos' : 'neg'}>{money(income - expense)}</b></div>
         <div className="stat"><small>Pagos a meses / mes</small><b>{money(commitments)}</b></div>
       </div>
+
+      {budget > 0 && (
+        <Card title="Presupuesto del mes">
+          <div className="row"><span>{money(spentAll)} de {money(budget)}</span><b className={budget - spentAll >= 0 ? 'pos' : 'neg'}>{budget - spentAll >= 0 ? `Quedan ${money(budget - spentAll)}` : `Excedido ${money(spentAll - budget)}`}</b></div>
+          <Bar pct={(spentAll / budget) * 100} tone={spentAll > budget ? 'bad' : spentAll > budget * 0.8 ? 'warn' : 'good'} />
+        </Card>
+      )}
+
+      {caps.length > 0 && (
+        <Card title="Tope de gasto de tarjetas">
+          {caps.map(({ a, c }) => c && (
+            <div key={a.id} className="row-block">
+              <div className="row"><b>{a.data.name}</b><span>{money(c.spent)} / {money(c.max)}</span></div>
+              <Bar pct={c.pct} tone={c.pct >= 100 ? 'bad' : c.pct >= 80 ? 'warn' : 'good'} />
+              <small>Corte {c.end} ({c.daysLeft} dias) · {c.left >= 0 ? `disponible ${money(c.left)}` : `te pasaste por ${money(-c.left)}`}</small>
+            </div>
+          ))}
+        </Card>
+      )}
 
       <Card title="Gasto minimo de tarjetas">
         {cards.length === 0 ? <Empty>Agrega una tarjeta de credito con dia de corte y gasto minimo en Cuentas.</Empty> : cards.map(({ a, ms }) => ms && (

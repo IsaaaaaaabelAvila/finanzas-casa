@@ -4,20 +4,20 @@ import { remove, save } from '../store';
 import { Account, AccountType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
 
-const TYPE_LABEL: Record<AccountType, string> = { debit: 'Debito', credit: 'Credito', cash: 'Efectivo' };
+const TYPE_LABEL: Record<AccountType, string> = { debit: 'Debito', credit: 'Credito', cash: 'Efectivo', investment: 'Inversion', other: 'Prestamo / deuda' };
 
 export default function Accounts({ d }: { d: Data }) {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [f, setF] = useState({ name: '', type: 'debit' as AccountType, initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', shared: false });
+  const [f, setF] = useState({ name: '', type: 'debit' as AccountType, initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', maxSpend: '', shared: false });
   const set = (k: keyof typeof f, v: any) => setF(p => ({ ...p, [k]: v }));
 
   function startEdit(id: string) {
     const a = d.allAccounts.find(x => x.id === id)!;
-    setF({ name: a.data.name, type: a.data.type, initial: String(a.data.initial), cutDay: a.data.cutDay ? String(a.data.cutDay) : '', payDay: a.data.payDay ? String(a.data.payDay) : '', limit: a.data.limit ? String(a.data.limit) : '', minSpend: a.data.minSpend ? String(a.data.minSpend) : '', shared: a.owner === null });
+    setF({ name: a.data.name, type: a.data.type, initial: String(a.data.initial), cutDay: a.data.cutDay ? String(a.data.cutDay) : '', payDay: a.data.payDay ? String(a.data.payDay) : '', limit: a.data.limit ? String(a.data.limit) : '', minSpend: a.data.minSpend ? String(a.data.minSpend) : '', maxSpend: a.data.maxSpend ? String(a.data.maxSpend) : '', shared: a.owner === null });
     setEditId(id); setOpen(true);
   }
-  function reset() { setF({ name: '', type: 'debit', initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', shared: false }); setEditId(null); setOpen(false); }
+  function reset() { setF({ name: '', type: 'debit', initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', maxSpend: '', shared: false }); setEditId(null); setOpen(false); }
 
   function submit() {
     if (!f.name.trim()) return;
@@ -27,6 +27,7 @@ export default function Accounts({ d }: { d: Data }) {
       a.payDay = Math.round(num(f.payDay)) || undefined;
       a.limit = num(f.limit) || undefined;
       a.minSpend = num(f.minSpend) || undefined;
+      a.maxSpend = num(f.maxSpend) || undefined;
     }
     save('account', a, f.shared ? null : d.me, editId ?? undefined);
     reset();
@@ -41,7 +42,7 @@ export default function Accounts({ d }: { d: Data }) {
           <Field label="Nombre"><input value={f.name} onChange={e => set('name', e.target.value)} placeholder="BBVA debito, Nu credito…" /></Field>
           <Field label="Tipo">
             <select value={f.type} onChange={e => set('type', e.target.value)}>
-              <option value="debit">Debito</option><option value="credit">Credito</option><option value="cash">Efectivo</option>
+              <option value="debit">Debito</option><option value="credit">Credito</option><option value="cash">Efectivo</option><option value="investment">Inversion</option><option value="other">Prestamo / deuda</option>
             </select>
           </Field>
           <Field label={f.type === 'credit' ? 'Deuda actual (saldo inicial)' : 'Saldo inicial'}><input inputMode="decimal" value={f.initial} onChange={e => set('initial', e.target.value)} /></Field>
@@ -51,6 +52,7 @@ export default function Accounts({ d }: { d: Data }) {
               <Field label="Dia limite de pago"><input inputMode="numeric" value={f.payDay} onChange={e => set('payDay', e.target.value)} /></Field>
               <Field label="Limite de credito"><input inputMode="decimal" value={f.limit} onChange={e => set('limit', e.target.value)} /></Field>
               <Field label="Gasto minimo por periodo (para evitar cobro por falta de uso; vacio si no aplica)"><input inputMode="decimal" value={f.minSpend} onChange={e => set('minSpend', e.target.value)} /></Field>
+              <Field label="Tope maximo de gasto por periodo (vacio si no aplica)"><input inputMode="decimal" value={f.maxSpend} onChange={e => set('maxSpend', e.target.value)} /></Field>
             </>
           )}
           {!editId && <label className="check"><input type="checkbox" checked={f.shared} onChange={e => set('shared', e.target.checked)} /> Cuenta compartida de la casa</label>}
