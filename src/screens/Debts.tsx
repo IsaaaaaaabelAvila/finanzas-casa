@@ -11,13 +11,16 @@ export default function Debts({ d }: { d: Data }) {
   const [month, setMonth] = useState(nowM);
   const [dir, setDir] = useState<Dir>('owed');
   const [open, setOpen] = useState(false);
+  const [stmt, setStmt] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [f, setF] = useState({ person: '', concept: '', card: '', kind: 'installments' as LedgerItem['kind'], monthly: '', months: '12', firstMonth: nowM, done: '0', amount: '', settled: '', aside: false });
   const set = (k: keyof typeof f, v: any) => setF(p => ({ ...p, [k]: v }));
 
   const items = d.ledger.filter(i => i.data.dir === dir);
   const persons = [...new Set(items.map(i => i.data.person))].sort();
   const allPersons = [...new Set(d.ledger.map(i => i.data.person))];
-  const rows = items.map(i => ({ i, st: ledgerStatus(i.data, month) }));
+  // las deudas liquidadas solo se ven en los meses de su calendario
+  const rows = items.map(i => ({ i, st: ledgerStatus(i.data, month) })).filter(r => !r.st.finished || r.st.schedule.includes(month));
 
   const active = rows.filter(r => !r.i.data.aside && !r.st.finished);
   const pending = active.reduce((a, r) => a + r.st.left, 0);
@@ -48,6 +51,50 @@ export default function Debts({ d }: { d: Data }) {
     const v = num(prompt(dir === 'owed' ? 'Monto cobrado (usa negativo para aumentar la deuda)' : 'Monto pagado (usa negativo para aumentar la deuda)') || '0');
     if (!v) return;
     save('ledger', { ...it, settled: Math.max(0, (it.settled ?? 0) + v) }, d.me, id);
+  }
+
+  if (stmt) {
+    const mine = rows.filter(r => r.i.data.person === stmt);
+    const lines = mine.filter(r => r.st.due).map(r => ({
+      concept: r.i.data.concept, card: r.i.data.card ?? '', amount: r.st.monthly,
+      n: r.st.schedule.indexOf(month) + 1, total: r.i.data.months ?? 0, paid: r.st.paidThisMonth
+    }));
+    const lumps = mine.filter(r => r.i.data.kind === 'lump' && !r.i.data.aside && !r.st.finished);
+    const toPay = lines.filter(l => !l.paid).reduce((a, l) => a + l.amount, 0) + lumps.reduce((a, r) => a + r.st.left, 0);
+    const paidAmt = lines.filter(l => l.paid).reduce((a, l) => a + l.amount, 0);
+    const text = [`Estado de cuenta - ${monthLabel(month)} - ${stmt}`, ...lines.map(l => `• ${l.concept}${l.card ? ` (${l.card})` : ''}: ${money(l.amount)} - pago ${l.n} de ${l.total}${l.paid ? ' (pagado)' : ''}`), ...lumps.map(r => `• ${r.i.data.concept}: ${money(r.st.left)} pendiente`), `Total por pagar: ${money(toPay)}`].join('\n');
+    const copy = async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { alert(text); } };
+    return (
+      <>
+        <div className="month-nav">
+          <button onClick={() => setMonth(addMonthsYm(month, -1))}>‹</button><b>{monthLabel(month)}</b><button onClick={() => setMonth(addMonthsYm(month, 1))}>›</button>
+          <button onClick={() => setStmt(null)}>Cerrar</button>
+        </div>
+        <div className="statement">
+          <h3>Estado de cuenta</h3>
+          <p className="who">{stmt} · {monthLabel(month)}</p>
+          <table>
+            <thead><tr><th>Concepto</th><th>TDC</th><th className="r">Cantidad</th><th className="r">Pago</th></tr></thead>
+            <tbody>
+              {lines.map((l, k) => (
+                <tr key={k} className={l.paid ? 'done' : ''}><td>{l.concept}</td><td>{l.card}</td><td className="r">{money(l.amount)}</td><td className="r">{l.n} de {l.total}</td></tr>
+              ))}
+              {lumps.map(r => (
+                <tr key={r.i.id}><td>{r.i.data.concept}</td><td></td><td className="r">{money(r.st.left)}</td><td className="r">saldo</td></tr>
+              ))}
+            </tbody>
+            <tfoot>
+              {paidAmt > 0 && <tr><td colSpan={2}>Ya pagado</td><td className="r" colSpan={2}>{money(paidAmt)}</td></tr>}
+              <tr className="total"><td colSpan={2}>Total por pagar</td><td className="r" colSpan={2}>{money(toPay)}</td></tr>
+            </tfoot>
+          </table>
+        </div>
+        <div className="row-actions" style={{ justifyContent: 'center' }}>
+          <button className="primary" onClick={copy}>{copied ? 'Copiado' : 'Copiar como mensaje'}</button>
+        </div>
+        <p className="hint" style={{ textAlign: 'center' }}>Toma captura de esta pantalla o copia el mensaje para enviarlo.</p>
+      </>
+    );
   }
 
   return (
@@ -108,6 +155,7 @@ export default function Debts({ d }: { d: Data }) {
         return (
           <Card key={person}>
             <div className="row"><b style={{ fontSize: 17 }}>{person}</b><b className={dir === 'owed' ? 'pos' : 'neg'}>{money(left)}</b></div>
+            <div className="row-actions" style={{ justifyContent: 'flex-start' }}><button className="link" onClick={() => setStmt(person)}>Ver estado de cuenta</button></div>
             <small>
               {monthSum > 0 ? `${monthLabel(month)}: ${money(monthSum)}` : `Sin mensualidades en ${monthLabel(month)}`}
               {side > 0 ? ` · aparte ${money(side)}` : ''}

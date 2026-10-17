@@ -81,3 +81,14 @@ button.link.danger { color: var(--bad); }
 .row input { flex: 1; min-width: 0; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); }
 
 .debt { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+.statement { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 22px 20px; margin-bottom: 14px; }
+.statement h3 { margin: 0; font-size: 20px; letter-spacing: .06em; text-transform: uppercase; }
+.statement .who { margin: 4px 0 16px; color: var(--muted); }
+.statement table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.statement th { text-align: left; font-weight: 500; color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.statement td { padding: 9px 4px; border-bottom: 1px solid var(--line); }
+.statement .r { text-align: right; white-space: nowrap; }
+.statement tr.done td { color: var(--muted); text-decoration: line-through; }
+.statement tfoot td { border-bottom: 0; padding-top: 12px; }
+.statement tr.total td { font-family: var(--serif); font-size: 20px; color: var(--brand); }
