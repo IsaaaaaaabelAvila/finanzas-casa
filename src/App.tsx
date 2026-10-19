@@ -36,6 +36,7 @@ const TABS: { id: Tab; label: string }[] = [
 export default function App() {
   const s = useStore();
   const [userId, setUserId] = useState<string | null>(null);
+  const [checkedFor, setCheckedFor] = useState<string | null>(null);
   const [ready, setReady] = useState(!cloudEnabled);
   const [tab, setTab] = useState<Tab>('home');
   const [scope, setScope] = useState<Scope>('all');
@@ -93,7 +94,29 @@ export default function App() {
     for (const cur of mine) if (cur.data.auto && !(cur.data.month in totals) && cur.data.amount !== 0) save('payroll', { ...cur.data, amount: 0 }, null, cur.id);
   }, [s.recs, signedIn, data.myKey]);
 
-  if (!ready) return <div className="splash">Cargando…</div>;
+  // Al iniciar sesion en un dispositivo sin datos locales, recupera mi casa desde la nube
+  useEffect(() => { if (!userId) setCheckedFor(null); }, [userId]);
+  const needsProfile =cloudEnabled && Boolean(userId) && !(s.me === userId && s.household);
+  useEffect(() => {
+    if (!supabase || !userId || !needsProfile) return;
+    if (s.me && s.me !== userId) return; // el efecto de limpieza corre primero y vuelve a disparar este
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data: prof } = await supabase.from('profiles').select('household_id, display_name').eq('user_id', userId).maybeSingle();
+        if (prof?.household_id) {
+          const { data: hh } = await supabase.from('households').select('invite_code').eq('id', prof.household_id).maybeSingle();
+          if (!cancelled) setState({ me: userId, household: prof.household_id, inviteCode: hh?.invite_code ?? null, displayName: prof.display_name ?? '', lastPull: null });
+          syncNow();
+        }
+      } finally {
+        if (!cancelled) setCheckedFor(userId);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, needsProfile, s.me]);
+
+  if (!ready || (needsProfile && checkedFor !== userId)) return <div className="splash">Cargando…</div>;
   if (!signedIn) return <Auth userId={userId} />;
 
   const signOut = async () => { await supabase?.auth.signOut(); resetAll(); };
