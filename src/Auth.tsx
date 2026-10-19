@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { cloudEnabled, supabase } from './supabase';
-import { setState } from './store';
+import { resetAll, setState } from './store';
 import { syncNow } from './sync';
 import { Card, Field } from './ui';
 
@@ -20,6 +20,12 @@ export default function Auth({ userId }: { userId: string | null }) {
     try { await fn(); } catch (e: any) { setMsg(e?.message ?? 'Error'); }
     setBusy(false);
   }
+
+  const signOut = async () => {
+    await supabase?.auth.signOut();
+    resetAll();
+    setMsg(''); setPass(''); setCode(''); setMode('in');
+  };
 
   const auth = () => run(async () => {
     const r = mode === 'in'
@@ -69,6 +75,8 @@ export default function Auth({ userId }: { userId: string | null }) {
             <h4>Opcion B: tu pareja ya creo la casa</h4>
             <Field label="Codigo de invitacion"><input value={code} onChange={e => setCode(e.target.value)} /></Field>
             <button disabled={busy || !code} onClick={() => setupHouse(true)}>Unirme con codigo</button>
+            <p className="hint">El codigo esta en Ajustes > Sincronizacion de la cuenta de quien creo la casa. Si no lo tienes a la mano, cierra sesion, entra con esa cuenta, copialo y regresa.</p>
+            <button className="link danger" onClick={signOut}>Cerrar sesion / usar otra cuenta</button>
           </>
         )}
         {msg && <p className="error">{msg}</p>}
