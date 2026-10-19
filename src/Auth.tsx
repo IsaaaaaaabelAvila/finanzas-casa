@@ -75,7 +75,7 @@ export default function Auth({ userId }: { userId: string | null }) {
             <h4>Opcion B: tu pareja ya creo la casa</h4>
             <Field label="Codigo de invitacion"><input value={code} onChange={e => setCode(e.target.value)} /></Field>
             <button disabled={busy || !code} onClick={() => setupHouse(true)}>Unirme con codigo</button>
-            <p className="hint">El codigo esta en Ajustes > Sincronizacion de la cuenta de quien creo la casa. Si no lo tienes a la mano, cierra sesion, entra con esa cuenta, copialo y regresa.</p>
+            <p className="hint">El codigo esta en Ajustes, seccion Sincronizacion de la cuenta de quien creo la casa. Si no lo tienes a la mano, cierra sesion, entra con esa cuenta, copialo y regresa.</p>
             <button className="link danger" onClick={signOut}>Cerrar sesion / usar otra cuenta</button>
           </>
         )}
