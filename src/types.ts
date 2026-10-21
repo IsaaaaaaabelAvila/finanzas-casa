@@ -67,4 +67,4 @@ export interface Setting { monthlyBudget?: number }
 export interface Item<T> { id: string; owner: string | null; data: T }
 
 export const INCOME_CATS = ['Nomina', 'Rendimientos', 'Freelance', 'Reembolso', 'Regalo', 'Otro ingreso'];
-export const EXPENSE_CATS = ['Vivienda', 'Servicios', 'Super', 'Comida fuera', 'Transporte', 'Salud', 'Suscripciones', 'Compras', 'Ropa', 'Ocio', 'Regalos', 'Educacion', 'Comisiones', 'Mascotas', 'Otros'];
+export const EXPENSE_CATS = ['Vivienda', 'Servicios', 'Super', 'Comida fuera', 'Transporte', 'Auto', 'Salud', 'Suscripciones', 'Compras', 'Ropa', 'Ocio', 'Regalos', 'Educacion', 'Comisiones', 'Mascotas', 'Otros'];
