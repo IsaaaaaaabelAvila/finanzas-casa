@@ -67,9 +67,10 @@ export default function Accounts({ d }: { d: Data }) {
         return (
           <Card className="total">
             <small>DINERO TOTAL</small>
-            <div className="big">{money(t.total)}</div>
+            <div className="big">{money(t.total + d.extra)}</div>
             <div className="row"><small>Disponible (cuentas, efectivo, inversion)</small><span>{money(t.liquid)}</span></div>
             <div className="row"><small>Tarjetas de credito (deuda)</small><span className={t.cards < 0 ? 'neg' : ''}>{money(t.cards)}</span></div>
+            {d.extra !== 0 && <div className="row"><small>Por cobrar y compras a meses pendientes</small><span>{money(d.extra)}</span></div>}
             {t.outside !== 0 && <div className="row"><small>Fuera del total</small><span>{money(t.outside)}</span></div>}
           </Card>
         );

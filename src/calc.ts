@@ -182,3 +182,11 @@ export function ledgerStatus(i: LedgerItem, month = ym(new Date())) {
   const monthly = i.monthly ?? 0;
   return { left: monthly * (months - paidCount), monthly, due: schedule.includes(month), paidThisMonth: paid.has(month), paidCount, schedule, remainingMonths: months - paidCount, finished: paidCount >= months };
 }
+
+/** Lo que me deben + lo que falta de mis compras a meses (para quien suma eso a su dinero total, porque ya esta como deuda en sus tarjetas). */
+export function pendingReceivables(plans: Item<Plan>[], ledger: Item<LedgerItem>[], me: string, myKey: string | null) {
+  let t = 0;
+  for (const p of plans) if (p.owner === me || (myKey && p.owner === null && p.data.paidBy === myKey)) t += planStatus(p.data).remainingAmount;
+  for (const l of ledger) if (l.data.dir === 'owed' && !l.data.aside) t += ledgerStatus(l.data).left;
+  return t;
+}

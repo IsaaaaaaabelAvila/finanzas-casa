@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { list, State } from './store';
-import { totalFunds } from './calc';
+import { pendingReceivables, totalFunds } from './calc';
 import type { Account, Goal, Item, LedgerItem, Payroll, People, Person, Plan, Settle, Setting, Txn } from './types';
 
 export type Scope = 'mine' | 'shared' | 'all';
@@ -16,6 +16,7 @@ export interface Data {
   allPlans: Item<Plan>[];
   setting: Item<Setting> | null;
   total: number;
+  extra: number;
   people: Person[];
   peopleId: string | null;
   myKey: string | null;
@@ -33,14 +34,17 @@ export function selectData(s: State, scope: Scope): Data {
   const allPlans = list<Plan>(s, 'plan');
   const peopleRec = list<People>(s, 'people')[0] ?? null;
   const people = peopleRec?.data.people ?? [];
+  const ledger = list<LedgerItem>(s, 'ledger').filter(l => l.owner === me);
+  const setting = list<Setting>(s, 'setting').find(x => x.owner === me) ?? null;
+  const myKey = people.find(p => p.userId === me)?.key ?? null;
+  const extra = setting?.data.includeReceivables ? pendingReceivables(allPlans, ledger, me, myKey) : 0;
   return {
     people, peopleId: peopleRec?.id ?? null,
-    ledger: list<LedgerItem>(s, 'ledger').filter(l => l.owner === me),
-    myKey: people.find(p => p.userId === me)?.key ?? null,
+    ledger, myKey, extra,
     payrolls: list<Payroll>(s, 'payroll'), settles: list<Settle>(s, 'settle'),
     me, allAccounts, allTxns, allPlans,
-    total: totalFunds(allAccounts, allTxns, allPlans).total,
-    setting: list<Setting>(s, 'setting').find(x => x.owner === me) ?? null,
+    total: totalFunds(allAccounts, allTxns, allPlans).total + extra,
+    setting,
     accounts: allAccounts.filter(a => ok(a.owner)),
     txns: allTxns.filter(t => ok(t.owner)),
     plans: allPlans.filter(p => ok(p.owner)),

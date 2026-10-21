@@ -49,7 +49,12 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
         <label className="field"><span>Maximo a gastar al mes (egresos propios + de la casa)</span>
           <input inputMode="decimal" value={budget} onChange={e => setBudget(e.target.value)} placeholder="20000" />
         </label>
-        <button onClick={() => { save('setting', { monthlyBudget: num(budget) }, d.me, d.setting?.id); setMsg('Presupuesto guardado'); }}>Guardar presupuesto</button>
+        <button onClick={() => { save('setting', { ...(d.setting?.data ?? {}), monthlyBudget: num(budget) }, d.me, d.setting?.id); setMsg('Presupuesto guardado'); }}>Guardar presupuesto</button>
+      </Card>
+
+      <Card title="Dinero total">
+        <label className="check"><input type="checkbox" checked={Boolean(d.setting?.data.includeReceivables)} onChange={e => { save('setting', { ...(d.setting?.data ?? {}), includeReceivables: e.target.checked }, d.me, d.setting?.id); }} />
+          Sumar a mi dinero total lo que me deben y lo que falta de mis compras a meses (porque ya cuentan como deuda en mis tarjetas)</label>
       </Card>
 
       <Card title="Recordatorios">

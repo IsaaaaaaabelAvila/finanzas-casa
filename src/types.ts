@@ -63,7 +63,7 @@ export interface LedgerItem {
   amount?: number; settled?: number;  // monto unico y lo ya cobrado/pagado
   aside?: boolean;                // deuda aparte (no se cobra activamente)
 }
-export interface Setting { monthlyBudget?: number }
+export interface Setting { monthlyBudget?: number; includeReceivables?: boolean }
 export interface Item<T> { id: string; owner: string | null; data: T }
 
 export const INCOME_CATS = ['Nomina', 'Rendimientos', 'Freelance', 'Reembolso', 'Regalo', 'Otro ingreso'];
