@@ -34,7 +34,7 @@ export function accountBalance(acc: Item<Account>, txns: Item<Txn>[], plans: Ite
       if (x.toAccountId === acc.id) bal += x.amount;
     }
   }
-  if (acc.data.type === 'credit') for (const p of plans) if (p.data.accountId === acc.id) bal -= p.data.total;
+  if (acc.data.type === 'credit') for (const p of plans) if (p.data.accountId === acc.id && !p.data.txnId) bal -= p.data.total;
   return bal;
 }
 
@@ -48,7 +48,7 @@ export function minSpend(acc: Item<Account>, txns: Item<Txn>[], plans: Item<Plan
   const p = period(a.cutDay, now);
   let spent = 0;
   for (const t of txns) if (t.data.type === 'expense' && t.data.accountId === acc.id && t.data.date >= p.start && t.data.date <= p.end) spent += t.data.amount;
-  for (const pl of plans) if (pl.data.accountId === acc.id && pl.data.startDate >= p.start && pl.data.startDate <= p.end) spent += pl.data.total;
+  for (const pl of plans) if (pl.data.accountId === acc.id && !pl.data.txnId && pl.data.startDate >= p.start && pl.data.startDate <= p.end) spent += pl.data.total;
   const remaining = Math.max(0, a.minSpend - spent);
   const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const daysLeft = Math.max(0, daysBetween(t0, p.endDate));
@@ -87,7 +87,7 @@ export function spendCap(acc: Item<Account>, txns: Item<Txn>[], plans: Item<Plan
   const p = period(a.cutDay, now);
   let spent = 0;
   for (const t of txns) if (t.data.type === 'expense' && t.data.accountId === acc.id && t.data.date >= p.start && t.data.date <= p.end) spent += t.data.amount;
-  for (const pl of plans) if (pl.data.accountId === acc.id && pl.data.startDate >= p.start && pl.data.startDate <= p.end) spent += pl.data.total;
+  for (const pl of plans) if (pl.data.accountId === acc.id && !pl.data.txnId && pl.data.startDate >= p.start && pl.data.startDate <= p.end) spent += pl.data.total;
   const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return { spent, max: a.maxSpend, left: a.maxSpend - spent, pct: (spent / a.maxSpend) * 100, end: p.end, daysLeft: Math.max(0, daysBetween(t0, p.endDate)) };
 }

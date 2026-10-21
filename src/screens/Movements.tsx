@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addMonthsYm, firstPaymentMonth, money, today, ym } from '../calc';
+import { addMonthsYm, firstPaymentMonth, money, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, INCOME_CATS, Txn, TxnType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -61,9 +61,10 @@ export default function Movements({ d }: { d: Data }) {
     if (!n || n < 2) return;
     const acc = d.allAccounts.find(a => a.id === t.data.accountId);
     const firstMonth = acc?.data.cutDay && acc.data.payDay ? firstPaymentMonth(t.data.date, acc.data.cutDay, acc.data.payDay) : t.data.date.slice(0, 7);
-    save('plan', { description: t.data.note || t.data.category, total: t.data.amount, months: n, startDate: t.data.date, firstMonth, paid: [], accountId: t.data.accountId, category: t.data.category, paidBy: t.data.paidBy }, t.owner);
-    remove(t.id);
+    save('plan', { description: t.data.note || t.data.category, total: t.data.amount, months: n, startDate: t.data.date, firstMonth, paid: [], accountId: t.data.accountId, category: t.data.category, paidBy: t.data.paidBy, txnId: t.id }, t.owner);
   }
+
+  const planOf = (txnId: string) => d.allPlans.find(p => p.data.txnId === txnId);
 
   function submitOwed() {
     const mine = num(amount);
@@ -94,6 +95,8 @@ export default function Movements({ d }: { d: Data }) {
       paidBy: shared ? (payer || d.myKey || d.people[0]?.key || d.me) : undefined
     };
     save('txn', t, shared ? null : d.me, editId ?? undefined);
+    const linked = editId ? planOf(editId) : undefined;
+    if (linked) save('plan', { ...linked.data, total: amt, startDate: date, description: t.note || t.category, category: t.category, accountId: acc }, linked.owner, linked.id);
     resetForm();
   }
 
@@ -173,14 +176,14 @@ export default function Movements({ d }: { d: Data }) {
             <div>
               <b>{t.data.note || <span style={{ opacity: 0.6 }}>{t.data.category} (sin concepto)</span>}</b>
               <small>{t.data.date} · {t.data.category} · {accName(t.data.accountId)}{t.data.toAccountId ? ` → ${accName(t.data.toAccountId)}` : ''} · {ownerLabel(t.owner)}{t.owner === null && t.data.paidBy ? ` · pago ${d.people.find(p => p.key === t.data.paidBy)?.name ?? ''}` : ''}</small>
+              {(() => { const pl = planOf(t.id); if (pl) { const st = planStatus(pl.data); return <span className="chip ontrack" style={{ marginTop: 4, display: 'inline-block' }}>A {pl.data.months} meses · {st.paidCount} de {pl.data.months} pagadas · {money(st.monthly)}/mes</span>; } return t.data.type === 'expense' ? <button className="link" style={{ padding: 0, marginTop: 2 }} onClick={() => toPlan(t)}>Pasar este gasto a meses</button> : null; })()}
             </div>
             <div className="tx-r">
               <b className={t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? 'pos' : t.data.type === 'expense' || t.data.type === 'adjust' ? 'neg' : ''}>
                 {t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? '+' : t.data.type === 'expense' ? '−' : ''}{money(t.data.amount)}
               </b>
               <button className="link" onClick={() => startEdit(t)}>Editar</button>
-              {t.data.type === 'expense' && <button className="link" title="Convertir en compra a meses" onClick={() => toPlan(t)}>A meses</button>}
-              <button className="x" onClick={() => confirm('¿Borrar movimiento?') && remove(t.id)}>🗑</button>
+              <button className="x" onClick={() => { const pl = planOf(t.id); if (confirm(pl ? '¿Borrar movimiento? Tambien se borra su compra a meses.' : '¿Borrar movimiento?')) { remove(t.id); if (pl) remove(pl.id); } }}>🗑</button>
             </div>
           </div>
         ))}

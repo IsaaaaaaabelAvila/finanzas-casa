@@ -16,7 +16,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const month = today().slice(0, 7);
   const monthTx = d.txns.filter(t => t.data.date.startsWith(month));
   const income = monthTx.filter(t => t.data.type === 'income').reduce((a, t) => a + t.data.amount, 0);
-  const planBuys = d.plans.filter(p => p.owner === d.me && p.data.startDate.startsWith(month));
+  const planBuys = d.plans.filter(p => p.owner === d.me && !p.data.txnId && p.data.startDate.startsWith(month));
   const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount, 0) + planBuys.reduce((a, p) => a + p.data.total, 0);
   const commitments = d.plans.map(p => planStatus(p.data, ym(now))).filter(s => s.due && !s.finished).reduce((a, s) => a + s.monthly, 0);
 
@@ -30,7 +30,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const loggedToday = d.allTxns.some(t => t.owner === d.me && t.data.date === today());
 
   const budget = d.setting?.data.monthlyBudget ?? 0;
-  const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0) + d.allPlans.filter(p => p.owner === d.me && p.data.startDate.startsWith(month)).reduce((a, p) => a + p.data.total, 0);
+  const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0) + d.allPlans.filter(p => p.owner === d.me && !p.data.txnId && p.data.startDate.startsWith(month)).reduce((a, p) => a + p.data.total, 0);
   const caps = d.accounts.map(a => ({ a, c: spendCap(a, d.allTxns, d.allPlans, now) })).filter(x => x.c);
   const cards = d.accounts.map(a => ({ a, ms: minSpend(a, d.allTxns, d.allPlans, now) })).filter(x => x.ms);
 
