@@ -55,12 +55,16 @@ export default function House({ d }: { d: Data }) {
       <Card title="Nomina del mes (para el porcentaje)">
         {d.people.map(p => {
           const current = d.payrolls.find(x => x.data.month === month && x.data.person === p.key);
-          const val = edit[p.key] ?? (current ? String(current.data.amount) : '');
+          // en reposo se muestra como moneda; al tocar el campo pasa a numero para editarlo
+          const val = edit[p.key] ?? (current ? money(current.data.amount) : '');
           const auto = Boolean(current?.data.auto);
           return (
             <div key={p.key} className="row" style={{ marginBottom: 8 }}>
               <span style={{ minWidth: 70 }}>{p.name}</span>
-              <input inputMode="decimal" value={val} placeholder="0.00" disabled={auto} onChange={e => setEdit(s => ({ ...s, [p.key]: e.target.value }))} />
+              <input inputMode="decimal" value={val} placeholder="$0.00" disabled={auto}
+                onFocus={() => setEdit(s => (s[p.key] === undefined ? { ...s, [p.key]: current ? String(current.data.amount) : '' } : s))}
+                onBlur={() => setEdit(s => { if (s[p.key] !== (current ? String(current.data.amount) : '')) return s; const n = { ...s }; delete n[p.key]; return n; })}
+                onChange={e => setEdit(s => ({ ...s, [p.key]: e.target.value }))} />
               {auto ? <small>automatica</small> : <button onClick={() => savePayroll(p.key)} disabled={edit[p.key] === undefined}>Guardar</button>}
             </div>
           );
