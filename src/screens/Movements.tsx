@@ -22,6 +22,7 @@ export default function Movements({ d }: { d: Data }) {
   const [note, setNote] = useState('');
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
   // al elegir una cuenta de deudas, el egreso es algo que pago otra persona y yo le debo (aparece en "Yo debo")
   const [owedPerson, setOwedPerson] = useState('Iván');
   const [owedMonths, setOwedMonths] = useState('1');
@@ -37,9 +38,23 @@ export default function Movements({ d }: { d: Data }) {
   const isDebtAcc = (a?: (typeof accs)[number]) => !!a && a.data.type === 'other' && (/deuda/i.test(a.data.name) || a.data.initial < 0);
   const debtAcc = isDebtAcc(selectedAcc) ? selectedAcc : undefined;
   const knownPersons = [...new Set(d.ledger.map(l => l.data.person))];
-  const useOwed = type === 'expense' && !shared && !!debtAcc;
+  const useOwed = !editId && type === 'expense' && !shared && !!debtAcc;
 
   const rows = d.txns.filter(t => t.data.date.startsWith(month)).sort((a, b) => b.data.date.localeCompare(a.data.date));
+
+  function resetForm() {
+    setEditId(null); setOpen(false); setAmount(''); setNote(''); setCategory(''); setToAccountId(''); setAccountId('');
+    setShared(false); setPayer(''); setDate(today()); setType('expense');
+  }
+
+  function startEdit(t: (typeof rows)[number]) {
+    setEditId(t.id); setOpen(true);
+    setType(t.data.type); setAmount(String(t.data.amount)); setDate(t.data.date);
+    setAccountId(t.data.accountId); setToAccountId(t.data.toAccountId ?? '');
+    setCategory(t.data.type === 'transfer' || t.data.type === 'adjust' ? '' : t.data.category);
+    setNote(t.data.note); setShared(t.owner === null); setPayer(t.data.paidBy ?? '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   function toPlan(t: (typeof rows)[number]) {
     const n = parseInt(prompt('¿A cuantos meses?') ?? '', 10);
@@ -78,8 +93,8 @@ export default function Movements({ d }: { d: Data }) {
       note: note.trim(),
       paidBy: shared ? (payer || d.myKey || d.people[0]?.key || d.me) : undefined
     };
-    save('txn', t, shared ? null : d.me);
-    setAmount(''); setNote(''); setOpen(false);
+    save('txn', t, shared ? null : d.me, editId ?? undefined);
+    resetForm();
   }
 
   return (
@@ -88,11 +103,11 @@ export default function Movements({ d }: { d: Data }) {
         <button onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
         <b>{month}</b>
         <button onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
-        <button className="primary" onClick={() => setOpen(!open)}>{open ? 'Cerrar' : '+ Nuevo'}</button>
+        <button className="primary" onClick={() => (open ? resetForm() : setOpen(true))}>{open ? 'Cerrar' : '+ Nuevo'}</button>
       </div>
 
       {open && (
-        <Card title="Nuevo movimiento">
+        <Card title={editId ? 'Editar movimiento' : 'Nuevo movimiento'}>
           {accs.length === 0 && <p className="error">Primero crea una cuenta en la pestana Cuentas.</p>}
           <div className="seg">
             {(['expense', 'income', 'transfer', 'adjust'] as TxnType[]).map(k => (
@@ -101,6 +116,7 @@ export default function Movements({ d }: { d: Data }) {
               </button>
             ))}
           </div>
+          <Field label="Concepto (que fue: tacos, uber, renta…)"><input value={note} onChange={e => setNote(e.target.value)} placeholder="Concepto" /></Field>
           <Field label={type === 'adjust' ? 'Monto del ajuste (+ suma, - resta al saldo)' : 'Monto'}><input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" /></Field>
           <Field label="Fecha"><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
           <Field label={type === 'transfer' ? 'Desde la cuenta' : 'Cuenta'}>
@@ -124,7 +140,6 @@ export default function Movements({ d }: { d: Data }) {
             </Field>
           )}
           {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && <p className="hint">Esta nomina se refleja sola en Casa para calcular el porcentaje (solo se comparte el total del mes).</p>}
-          <Field label="Nota"><input value={note} onChange={e => setNote(e.target.value)} /></Field>
           {useOwed && (
             <>
               <p className="hint">Como la cuenta es "{debtAcc?.data.name}", este egreso es algo que pago otra persona y tu le debes: se suma a esa cuenta y se crea la deuda en "Yo debo". El monto es lo que tu debes.</p>
@@ -140,7 +155,7 @@ export default function Movements({ d }: { d: Data }) {
               )}
             </>
           )}
-          <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Es un movimiento comun de la casa (lo ven los dos)</label>
+          <label className="check"><input type="checkbox" checked={shared} disabled={Boolean(editId)} onChange={e => setShared(e.target.checked)} /> Es un movimiento comun de la casa (lo ven los dos){editId ? ' — no se puede cambiar al editar' : ''}</label>
           {shared && d.people.length > 0 && (
             <Field label="Quien pago">
               <select value={payer || d.myKey || d.people[0].key} onChange={e => setPayer(e.target.value)}>
@@ -148,7 +163,7 @@ export default function Movements({ d }: { d: Data }) {
               </select>
             </Field>
           )}
-          <button className="primary" onClick={submit} disabled={!num(amount) || accs.length === 0}>Guardar</button>
+          <button className="primary" onClick={submit} disabled={!num(amount) || accs.length === 0}>{editId ? 'Guardar cambios' : 'Guardar'}</button>
         </Card>
       )}
 
@@ -156,13 +171,14 @@ export default function Movements({ d }: { d: Data }) {
         {rows.length === 0 ? <Empty>Sin movimientos este mes.</Empty> : rows.map(t => (
           <div key={t.id} className="tx">
             <div>
-              <b>{t.data.note || t.data.category}</b>
+              <b>{t.data.note || <span style={{ opacity: 0.6 }}>{t.data.category} (sin concepto)</span>}</b>
               <small>{t.data.date} · {t.data.category} · {accName(t.data.accountId)}{t.data.toAccountId ? ` → ${accName(t.data.toAccountId)}` : ''} · {ownerLabel(t.owner)}{t.owner === null && t.data.paidBy ? ` · pago ${d.people.find(p => p.key === t.data.paidBy)?.name ?? ''}` : ''}</small>
             </div>
             <div className="tx-r">
               <b className={t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? 'pos' : t.data.type === 'expense' || t.data.type === 'adjust' ? 'neg' : ''}>
                 {t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? '+' : t.data.type === 'expense' ? '−' : ''}{money(t.data.amount)}
               </b>
+              <button className="link" onClick={() => startEdit(t)}>Editar</button>
               {t.data.type === 'expense' && <button className="link" title="Convertir en compra a meses" onClick={() => toPlan(t)}>A meses</button>}
               <button className="x" onClick={() => confirm('¿Borrar movimiento?') && remove(t.id)}>🗑</button>
             </div>
