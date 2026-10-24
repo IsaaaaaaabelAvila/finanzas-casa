@@ -67,7 +67,7 @@ export interface LedgerItem {
   aside?: boolean;                // deuda aparte (no se cobra activamente)
 }
 export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: number; income?: number }
-export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean }
+export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean; incomeOverrides?: Record<string, number> }
 export interface Status { person: string; level: 'green' | 'amber' | 'red'; month: string; text: string }
 export interface Item<T> { id: string; owner: string | null; data: T }
 

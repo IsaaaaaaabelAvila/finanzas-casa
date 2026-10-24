@@ -15,16 +15,18 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
   const eff = cfgAt(d.setting?.data ?? null, cur) ?? cfgAt(d.setting?.data ?? null, d.setting?.data.startMonth ?? '2026-11');
   const [mode, setMode] = useState<'budget' | 'saving'>(eff?.mode ?? 'budget');
   const [amount, setAmount] = useState(eff ? String(eff.amount) : (d.setting?.data.monthlyBudget ? String(d.setting.data.monthlyBudget) : ''));
-  const [income, setIncome] = useState(eff?.income ? String(eff.income) : '');
   const startMonth = d.setting?.data.startMonth ?? '2026-11';
+  const prevStart = (() => { const [y, mo] = (d.setting?.data.startMonth ?? '2026-11').split('-').map(Number); return ym(new Date(y, mo - 2, 1)); })();
+  const [prevIncome, setPrevIncome] = useState(d.setting?.data.incomeOverrides?.[prevStart] !== undefined ? String(d.setting!.data.incomeOverrides![prevStart]) : '');
   const [from, setFrom] = useState(cur < startMonth ? startMonth : cur);
 
   function saveCfg() {
     const base = d.setting?.data ?? {};
     const f = from < startMonth ? startMonth : from;
-    const entry = { from: f, mode, amount: num(amount), ...(mode === 'saving' ? { income: num(income) } : {}) };
+    const entry = { from: f, mode, amount: num(amount) };
     const plan = [...(base.plan ?? []).filter(c => c.from !== f), entry].sort((a, b) => a.from.localeCompare(b.from));
-    save('setting', { ...base, startMonth, plan }, d.me, d.setting?.id);
+    const incomeOverrides = { ...(base.incomeOverrides ?? {}), ...(mode === 'saving' && prevIncome !== '' ? { [prevStart]: num(prevIncome) } : {}) };
+    save('setting', { ...base, startMonth, plan, incomeOverrides }, d.me, d.setting?.id);
     setMsg(`Guardado: aplica desde ${f}. Los meses anteriores y su arrastre no cambian.`);
   }
 
@@ -71,16 +73,19 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
           <input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="20000" />
         </label>
         {mode === 'saving' && (
-          <label className="field"><span>Nomina mensual esperada</span>
-            <input inputMode="decimal" value={income} onChange={e => setIncome(e.target.value)} placeholder="28000" />
-          </label>
+          <>
+            <p className="hint">Con ahorro fijo, tu mes se gasta de lo que ya recibiste el mes anterior, no de lo que esperas recibir.</p>
+            <label className="field"><span>Ingresos recibidos en {prevStart} (de ahi sale el primer mes, si no estan registrados)</span>
+              <input inputMode="decimal" value={prevIncome} onChange={e => setPrevIncome(e.target.value)} placeholder="28000" />
+            </label>
+          </>
         )}
         <label className="field"><span>Aplicar desde el mes</span>
           <input type="month" min={startMonth} value={from} onChange={e => setFrom(e.target.value)} />
         </label>
         <button onClick={saveCfg} disabled={!num(amount)}>Guardar</button>
         {(d.setting?.data.plan?.length ?? 0) > 0 && (
-          <p className="hint">Historial: {(d.setting?.data.plan ?? []).map(c => `${c.from}: ${c.mode === 'budget' ? 'presupuesto' : 'ahorro fijo'} ${c.amount}${c.income ? ` (nomina ${c.income})` : ''}`).join(' · ')}</p>
+          <p className="hint">Historial: {(d.setting?.data.plan ?? []).map(c => `${c.from}: ${c.mode === 'budget' ? 'presupuesto' : 'ahorro fijo'} ${c.amount}`).join(' · ')}</p>
         )}
         <label className="check" style={{ marginTop: 12 }}><input type="checkbox" checked={Boolean(d.setting?.data.shareStatus)} onChange={e => save('setting', { ...(d.setting?.data ?? {}), shareStatus: e.target.checked }, d.me, d.setting?.id)} />
           Compartir mi semaforo con mi pareja (solo ve verde, ambar o rojo, sin numeros)</label>

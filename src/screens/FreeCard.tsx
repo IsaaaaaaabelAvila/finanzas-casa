@@ -20,7 +20,6 @@ export default function FreeCard({ d }: { d: Data }) {
   const day = now.getDate();
   const g0 = b.base + b.carry - b.commit; // lo que se puede gastar libremente en el mes
   const level = budgetLevel(b, now);
-  const perDay = !preview && b.libre > 0 ? b.libre / (dim - day + 1) : 0;
   const projected = !preview && day > 0 ? g0 - (b.spent / day) * dim : null;
   const cfgNow = (st.plan ?? []).filter(c => c.from <= month).slice(-1)[0];
 
@@ -39,7 +38,7 @@ export default function FreeCard({ d }: { d: Data }) {
         <small>{preview ? 'EL ARRASTRE EMPIEZA EN ESTE MES' : monthLabel(month).toUpperCase()}</small>
         <div className="big" style={{ color: !preview && b.libre <= 0 ? 'var(--bad)' : undefined }}>{money(b.libre)}</div>
         {!preview && <Bar pct={g0 > 0 ? (b.spent / g0) * 100 : 100} tone={level === 'red' ? 'bad' : level === 'amber' ? 'warn' : 'good'} />}
-        <div className="row"><small>{cfgNow?.mode === 'saving' ? 'Nomina esperada − ahorro fijo' : 'Presupuesto'}</small><span>{money(b.base)}</span></div>
+        <div className="row"><small>{cfgNow?.mode === 'saving' ? `Ingresos de ${monthLabel(addMonthsYm(month, -1))} − ahorro fijo` : 'Presupuesto'}</small><span>{money(b.base)}</span></div>
         <div className="row"><small>Arrastre del mes anterior</small><span className={b.carry < 0 ? 'neg' : b.carry > 0 ? 'pos' : ''}>{b.carry >= 0 ? '+' : '−'}{money(Math.abs(b.carry))}</span></div>
         <div className="row"><small>Comprometido (mensualidades, deudas, tu parte de la casa)</small><span>−{money(b.commit)}</span></div>
         <div className="row"><small>Gastado en el mes</small><span>−{money(b.spent)}</span></div>
@@ -58,9 +57,8 @@ export default function FreeCard({ d }: { d: Data }) {
             <p className="hint">Se actualiza solo conforme se registran los gastos de la casa de los dos.</p>
           </div>
         )}
-        {!preview && perDay > 0 && <p className="hint">Puedes gastar ~<b>{money(perDay)}</b> al dia el resto del mes.</p>}
         {projected !== null && <p className="hint">Al ritmo de hoy terminarias el mes con {projected >= 0 ? <b>{money(projected)}</b> : <b className="neg">−{money(-projected)}</b>}.</p>}
-        {!preview && cfgNow?.mode === 'saving' && <p className="hint">Ahorro fijo del mes: {money(cfgNow.amount)} (ya apartado de la nomina esperada).</p>}
+        {!preview && cfgNow?.mode === 'saving' && <p className="hint">Ahorro fijo del mes: {money(cfgNow.amount)} (ya descontado de lo que recibiste el mes anterior).</p>}
         <p className="hint">El arrastre se calcula solo al cerrar cada mes: lo que sobra o falta pasa al siguiente.</p>
       </Card>
 

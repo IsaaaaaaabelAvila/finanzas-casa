@@ -243,10 +243,18 @@ export function monthSpent(ctx: BudgetCtx, m: string) {
   return { own, casa: casaShare, total: own + casaShare };
 }
 
+/** Ingresos recibidos en un mes (o el monto capturado a mano para meses anteriores al arranque). */
+export function monthIncome(ctx: BudgetCtx, m: string) {
+  const o = ctx.setting?.incomeOverrides?.[m];
+  if (o !== undefined) return o;
+  return ctx.txns.filter(t => t.owner === ctx.me && t.data.type === 'income' && t.data.date.startsWith(m)).reduce((a, t) => a + t.data.amount, 0);
+}
+
 export function monthBase(ctx: BudgetCtx, m: string) {
   const c = cfgAt(ctx.setting, m);
   if (!c) return 0;
-  return c.mode === 'budget' ? c.amount : (c.income ?? 0) - c.amount;
+  // ahorro fijo: se gasta de lo que ya se recibio el mes anterior, no de lo que se espera recibir
+  return c.mode === 'budget' ? c.amount : monthIncome(ctx, addMonthsYm(m, -1)) - c.amount;
 }
 
 /** Presupuesto + arrastre del mes vencido - comprometido - gastado. El arrastre es el "libre" final del mes anterior. */
