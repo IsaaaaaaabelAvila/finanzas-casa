@@ -58,12 +58,8 @@ export default function FreeCard({ d }: { d: Data }) {
                 : mine.diff < -0.5
                   ? <p className="hint">A fin de mes le darias a {partner?.name ?? 'tu pareja'} ~<b>{money(-mine.diff)}</b>. Tu libre ya descuenta tu parte completa.</p>
                   : <p className="hint">Van a mano por ahora.</p>}
-            <p className="hint">Se actualiza solo conforme se registran los gastos de la casa de los dos.</p>
           </div>
         )}
-        {projected !== null && <p className="hint">Al ritmo de hoy terminarias el mes con {projected >= 0 ? <b>{money(projected)}</b> : <b className="neg">−{money(-projected)}</b>}.</p>}
-        {!preview && cfgNow?.mode === 'saving' && <p className="hint">Ahorro fijo del mes: {money(cfgNow.amount)} (ya descontado de lo que recibiste el mes anterior).</p>}
-        <p className="hint">El arrastre se calcula solo al cerrar cada mes: lo que sobra o falta pasa al siguiente.</p>
       </Card>
 
       {closed.length > 0 && (
