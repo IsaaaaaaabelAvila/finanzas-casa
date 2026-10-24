@@ -1,4 +1,4 @@
-import type { Account, Item, LedgerItem, Payroll, Person, Plan, Settle, Txn } from './types';
+import type { Account, Goal, Item, LedgerItem, Payroll, Person, Plan, Settle, Txn } from './types';
 
 export const money = (n: number) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 2 }).format(n || 0);
@@ -189,4 +189,13 @@ export function pendingReceivables(plans: Item<Plan>[], ledger: Item<LedgerItem>
   for (const p of plans) if (p.owner === me || (myKey && p.owner === null && p.data.paidBy === myKey)) t += planStatus(p.data).remainingAmount;
   for (const l of ledger) if (l.data.dir === 'owed' && !l.data.aside) t += ledgerStatus(l.data).left;
   return t;
+}
+
+/** Reparte el dinero total entre las metas ligadas, en orden de prioridad (la primera se llena primero). */
+export function allocateGoals(goals: Item<Goal>[], total: number) {
+  const linked = goals.filter(g => g.data.linkTotal).sort((a, b) => (a.data.order ?? 1e9) - (b.data.order ?? 1e9));
+  let rest = Math.max(0, total);
+  const alloc: Record<string, number> = {};
+  for (const g of linked) { const a = Math.min(g.data.target, rest); alloc[g.id] = a; rest -= a; }
+  return { alloc, unassigned: rest, linked };
 }

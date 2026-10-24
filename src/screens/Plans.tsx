@@ -4,6 +4,7 @@ import { remove, save } from '../store';
 import { EXPENSE_CATS, Plan } from '../types';
 import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
 import Debts from './Debts';
+import Commitments from './Commitments';
 
 function PlansList({ d }: { d: Data }) {
   const nowM = ym(new Date());
@@ -114,14 +115,15 @@ function PlansList({ d }: { d: Data }) {
 }
 
 export default function Plans({ d }: { d: Data }) {
-  const [view, setView] = useState<'plans' | 'debts'>('plans');
+  const [view, setView] = useState<'plans' | 'debts' | 'commit'>('plans');
   return (
     <>
       <div className="seg" style={{ marginBottom: 12 }}>
         <button className={view === 'plans' ? 'on' : ''} onClick={() => setView('plans')}>Compras a meses</button>
         <button className={view === 'debts' ? 'on' : ''} onClick={() => setView('debts')}>Deudas con personas</button>
+        <button className={view === 'commit' ? 'on' : ''} onClick={() => setView('commit')}>Compromisos</button>
       </div>
-      {view === 'plans' ? <PlansList d={d} /> : <Debts d={d} />}
+      {view === 'plans' ? <PlansList d={d} /> : view === 'debts' ? <Debts d={d} /> : <Commitments d={d} />}
     </>
   );
 }

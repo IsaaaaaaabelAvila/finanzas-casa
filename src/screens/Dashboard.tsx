@@ -1,5 +1,5 @@
 import { Tab } from '../App';
-import { goalPlan, minSpend, money, planStatus, spendCap, ym, today } from '../calc';
+import { allocateGoals, goalPlan, minSpend, money, planStatus, spendCap, ym, today } from '../calc';
 import { Bar, Card, Data, Empty, Scope } from '../ui';
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
@@ -29,6 +29,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const reminderDay = [5, 6, 0, 1].includes(wd);
   const loggedToday = d.allTxns.some(t => t.owner === d.me && t.data.date === today());
 
+  const goalAlloc = allocateGoals(d.goals, d.total);
   const budget = d.setting?.data.monthlyBudget ?? 0;
   const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0) + d.allPlans.filter(p => p.owner === d.me && !p.data.txnId && p.data.startDate.startsWith(month)).reduce((a, p) => a + p.data.total, 0);
   const caps = d.accounts.map(a => ({ a, c: spendCap(a, d.allTxns, d.allPlans, now) })).filter(x => x.c);
@@ -83,7 +84,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
 
       {!house && <Card title="Metas" right={<button className="link" onClick={() => go('goals')}>Ver</button>}>
         {d.goals.length === 0 ? <Empty>Aun no tienes metas.</Empty> : d.goals.slice(0, 3).map(g => {
-          const p = goalPlan(g.data.target, g.data.linkTotal ? d.total : g.data.saved, g.data.deadline, now);
+          const p = goalPlan(g.data.target, g.data.linkTotal ? (goalAlloc.alloc[g.id] ?? 0) : g.data.saved, g.data.deadline, now);
           return (
             <div key={g.id} className="row-block">
               <div className="row"><b>{g.data.name}</b><span>{p.pct.toFixed(0)}%</span></div>

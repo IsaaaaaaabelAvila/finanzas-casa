@@ -39,7 +39,8 @@ export interface Goal {
   target: number;
   saved: number;
   deadline?: string;
-  linkTotal?: boolean;  // el ahorro = total de las cuentas
+  linkTotal?: boolean;  // se llena con el dinero total, por orden de prioridad
+  order?: number;       // prioridad (1 = primero)
 }
 export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle' | 'ledger';
 export interface Rec<T = any> {

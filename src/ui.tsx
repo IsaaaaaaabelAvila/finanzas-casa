@@ -37,7 +37,7 @@ export function selectData(s: State, scope: Scope): Data {
   const ledger = list<LedgerItem>(s, 'ledger').filter(l => l.owner === me);
   const setting = list<Setting>(s, 'setting').find(x => x.owner === me) ?? null;
   const myKey = people.find(p => p.userId === me)?.key ?? null;
-  const extra = setting?.data.includeReceivables ? pendingReceivables(allPlans, ledger, me, myKey) : 0;
+  const extra = 0; // el dinero total descuenta toda la deuda; lo que te deben queda fuera
   return {
     people, peopleId: peopleRec?.id ?? null,
     ledger, myKey, extra,

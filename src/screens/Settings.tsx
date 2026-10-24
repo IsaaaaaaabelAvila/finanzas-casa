@@ -52,11 +52,6 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
         <button onClick={() => { save('setting', { ...(d.setting?.data ?? {}), monthlyBudget: num(budget) }, d.me, d.setting?.id); setMsg('Presupuesto guardado'); }}>Guardar presupuesto</button>
       </Card>
 
-      <Card title="Dinero total">
-        <label className="check"><input type="checkbox" checked={Boolean(d.setting?.data.includeReceivables)} onChange={e => { save('setting', { ...(d.setting?.data ?? {}), includeReceivables: e.target.checked }, d.me, d.setting?.id); }} />
-          Sumar a mi dinero total lo que me deben y lo que falta de mis compras a meses (porque ya cuentan como deuda en mis tarjetas)</label>
-      </Card>
-
       <Card title="Recordatorios">
         {!isNative() && <p className="hint">Las notificaciones programadas funcionan en la app de Android (APK). En el navegador solo veras el aviso dentro de la app.</p>}
         <label className="check"><input type="checkbox" checked={cfg.enabled} onChange={e => update({ enabled: e.target.checked })} /> Recordarme registrar movimientos (viernes, sabado, domingo y lunes)</label>
