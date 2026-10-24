@@ -3,6 +3,7 @@ import { cloudEnabled } from '../supabase';
 import { getState, save, setState, useStore } from '../store';
 import { syncNow } from '../sync';
 import { getNotifSettings, isNative, requestPermission, saveNotifSettings } from '../notifications';
+import { cfgAt, ym } from '../calc';
 import { Card, Data, num } from '../ui';
 
 export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSignOut: () => void; onLocalSetup: () => void }) {
@@ -10,7 +11,22 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
   const [cfg, setCfg] = useState(getNotifSettings());
   const [msg, setMsg] = useState('');
   void onLocalSetup;
-  const [budget, setBudget] = useState(d.setting?.data.monthlyBudget ? String(d.setting.data.monthlyBudget) : '');
+  const cur = ym(new Date());
+  const eff = cfgAt(d.setting?.data ?? null, cur) ?? cfgAt(d.setting?.data ?? null, d.setting?.data.startMonth ?? '2026-11');
+  const [mode, setMode] = useState<'budget' | 'saving'>(eff?.mode ?? 'budget');
+  const [amount, setAmount] = useState(eff ? String(eff.amount) : (d.setting?.data.monthlyBudget ? String(d.setting.data.monthlyBudget) : ''));
+  const [income, setIncome] = useState(eff?.income ? String(eff.income) : '');
+  const startMonth = d.setting?.data.startMonth ?? '2026-11';
+  const [from, setFrom] = useState(cur < startMonth ? startMonth : cur);
+
+  function saveCfg() {
+    const base = d.setting?.data ?? {};
+    const f = from < startMonth ? startMonth : from;
+    const entry = { from: f, mode, amount: num(amount), ...(mode === 'saving' ? { income: num(income) } : {}) };
+    const plan = [...(base.plan ?? []).filter(c => c.from !== f), entry].sort((a, b) => a.from.localeCompare(b.from));
+    save('setting', { ...base, startMonth, plan }, d.me, d.setting?.id);
+    setMsg(`Guardado: aplica desde ${f}. Los meses anteriores y su arrastre no cambian.`);
+  }
 
   const update = (p: Partial<typeof cfg>) => { const n = { ...cfg, ...p }; setCfg(n); saveNotifSettings(n); setState({}, false); };
 
@@ -45,11 +61,29 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
         <p className="hint">Se sincroniza solo al abrir la app, al volver a tener internet, despues de cada cambio y cada minuto. Sin internet todo se guarda en el dispositivo y se sube despues.</p>
       </Card>
 
-      <Card title="Presupuesto mensual">
-        <label className="field"><span>Maximo a gastar al mes (egresos propios + de la casa)</span>
-          <input inputMode="decimal" value={budget} onChange={e => setBudget(e.target.value)} placeholder="20000" />
+      <Card title="Presupuesto y ahorro">
+        <p className="hint">Elige como repartes tu ingreso: una parte es fija y la otra es el resto. El "libre para gastar" arrastra lo que sobra o falta de cada mes que cierra, a partir de {startMonth}.</p>
+        <div className="seg">
+          <button className={mode === 'budget' ? 'on' : ''} onClick={() => setMode('budget')}>Presupuesto fijo (el resto lo ahorro)</button>
+          <button className={mode === 'saving' ? 'on' : ''} onClick={() => setMode('saving')}>Ahorro fijo (el resto es mi presupuesto)</button>
+        </div>
+        <label className="field"><span>{mode === 'budget' ? 'Presupuesto al mes' : 'Ahorro fijo al mes'}</span>
+          <input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="20000" />
         </label>
-        <button onClick={() => { save('setting', { ...(d.setting?.data ?? {}), monthlyBudget: num(budget) }, d.me, d.setting?.id); setMsg('Presupuesto guardado'); }}>Guardar presupuesto</button>
+        {mode === 'saving' && (
+          <label className="field"><span>Nomina mensual esperada</span>
+            <input inputMode="decimal" value={income} onChange={e => setIncome(e.target.value)} placeholder="28000" />
+          </label>
+        )}
+        <label className="field"><span>Aplicar desde el mes</span>
+          <input type="month" min={startMonth} value={from} onChange={e => setFrom(e.target.value)} />
+        </label>
+        <button onClick={saveCfg} disabled={!num(amount)}>Guardar</button>
+        {(d.setting?.data.plan?.length ?? 0) > 0 && (
+          <p className="hint">Historial: {(d.setting?.data.plan ?? []).map(c => `${c.from}: ${c.mode === 'budget' ? 'presupuesto' : 'ahorro fijo'} ${c.amount}${c.income ? ` (nomina ${c.income})` : ''}`).join(' · ')}</p>
+        )}
+        <label className="check" style={{ marginTop: 12 }}><input type="checkbox" checked={Boolean(d.setting?.data.shareStatus)} onChange={e => save('setting', { ...(d.setting?.data ?? {}), shareStatus: e.target.checked }, d.me, d.setting?.id)} />
+          Compartir mi semaforo con mi pareja (solo ve verde, ambar o rojo, sin numeros)</label>
       </Card>
 
       <Card title="Recordatorios">

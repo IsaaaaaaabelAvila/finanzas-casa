@@ -1,6 +1,7 @@
 import { Tab } from '../App';
 import { allocateGoals, goalPlan, minSpend, money, planStatus, spendCap, ym, today } from '../calc';
 import { Bar, Card, Data, Empty, Scope } from '../ui';
+import FreeCard, { PartnerMarker } from './FreeCard';
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 const STATUS_TEXT = {
@@ -31,6 +32,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
 
   const goalAlloc = allocateGoals(d.goals, d.total);
   const budget = d.setting?.data.monthlyBudget ?? 0;
+  const hasPlan = (d.setting?.data.plan?.length ?? 0) > 0;
   const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0) + d.allPlans.filter(p => p.owner === d.me && !p.data.txnId && p.data.startDate.startsWith(month)).reduce((a, p) => a + p.data.total, 0);
   const caps = d.accounts.map(a => ({ a, c: spendCap(a, d.allTxns, d.allPlans, now) })).filter(x => x.c);
   const cards = d.accounts.map(a => ({ a, ms: minSpend(a, d.allTxns, d.allPlans, now) })).filter(x => x.ms);
@@ -50,7 +52,10 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
         <div className="stat"><small>Pagos a meses / mes</small><b>{money(commitments)}</b></div>
       </div>
 
-      {!house && budget > 0 && (
+      {!house && hasPlan && <FreeCard d={d} />}
+      {!house && <PartnerMarker d={d} />}
+
+      {!house && !hasPlan && budget > 0 && (
         <Card title="Presupuesto del mes">
           <div className="row"><span>{money(spentAll)} de {money(budget)}</span><b className={budget - spentAll >= 0 ? 'pos' : 'neg'}>{budget - spentAll >= 0 ? `Quedan ${money(budget - spentAll)}` : `Excedido ${money(spentAll - budget)}`}</b></div>
           <Bar pct={(spentAll / budget) * 100} tone={spentAll > budget ? 'bad' : spentAll > budget * 0.8 ? 'warn' : 'good'} />

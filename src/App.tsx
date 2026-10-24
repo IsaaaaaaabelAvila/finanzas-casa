@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { cloudEnabled, supabase } from './supabase';
-import { resetAll, save, setState, useStore } from './store';
+import { remove, resetAll, save, setState, useStore } from './store';
+import { budgetCtx } from './budget';
+import { budgetFor, budgetLevel, levelText, ym } from './calc';
 import { startAutoSync, syncNow } from './sync';
 import { scheduleAll } from './notifications';
 import Auth from './Auth';
@@ -92,6 +94,22 @@ export default function App() {
     }
     // si borre toda mi nomina de un mes que era automatica, vuelve a cero
     for (const cur of mine) if (cur.data.auto && !(cur.data.month in totals) && cur.data.amount !== 0) save('payroll', { ...cur.data, amount: 0 }, null, cur.id);
+  }, [s.recs, signedIn, data.myKey]);
+
+  // Si comparto mi semaforo, publica solo el color (sin numeros) para mi pareja; si lo apago, lo borra
+  useEffect(() => {
+    if (!signedIn || !data.myKey) return;
+    const all = selectData(s, 'all');
+    const existing = all.statuses.find(x => x.data.person === all.myKey);
+    const st = all.setting?.data;
+    if (!st?.shareStatus || !st.plan?.length) { if (existing) remove(existing.id); return; }
+    const cur = ym(new Date());
+    if (cur < (st.startMonth ?? '2026-11')) { if (existing) remove(existing.id); return; }
+    const b = budgetFor(budgetCtx(all), cur);
+    if (!b) return;
+    const level = budgetLevel(b, new Date());
+    if (existing && existing.data.level === level && existing.data.month === cur) return;
+    save('status', { person: all.myKey!, level, month: cur, text: levelText(level) }, null, existing?.id);
   }, [s.recs, signedIn, data.myKey]);
 
   // Al iniciar sesion en un dispositivo sin datos locales, recupera mi casa desde la nube

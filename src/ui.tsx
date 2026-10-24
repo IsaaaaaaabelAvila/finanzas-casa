@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { list, State } from './store';
 import { pendingReceivables, totalFunds } from './calc';
-import type { Account, Goal, Item, LedgerItem, Payroll, People, Person, Plan, Settle, Setting, Txn } from './types';
+import type { Account, Goal, Item, LedgerItem, Payroll, People, Person, Plan, Settle, Setting, Status, Txn } from './types';
 
 export type Scope = 'mine' | 'shared' | 'all';
 
@@ -23,6 +23,7 @@ export interface Data {
   payrolls: Item<Payroll>[];
   settles: Item<Settle>[];
   ledger: Item<LedgerItem>[];
+  statuses: Item<Status>[];
 }
 
 /** Datos visibles segun el filtro (Mio / Casa / Todo). */
@@ -40,7 +41,7 @@ export function selectData(s: State, scope: Scope): Data {
   const extra = 0; // el dinero total descuenta toda la deuda; lo que te deben queda fuera
   return {
     people, peopleId: peopleRec?.id ?? null,
-    ledger, myKey, extra,
+    ledger, myKey, extra, statuses: list<Status>(s, 'status'),
     payrolls: list<Payroll>(s, 'payroll'), settles: list<Settle>(s, 'settle'),
     me, allAccounts, allTxns, allPlans,
     total: totalFunds(allAccounts, allTxns, allPlans).total + extra,

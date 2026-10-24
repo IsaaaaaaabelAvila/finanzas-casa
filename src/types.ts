@@ -21,6 +21,7 @@ export interface Txn {
   category: string;
   note: string;
   paidBy?: string;      // clave de la persona que pago (gastos de la casa)
+  ledgerId?: string;    // deuda a personas que creo este gasto (se cuenta por mensualidades)
 }
 export interface Plan {
   accountId?: string;
@@ -42,7 +43,7 @@ export interface Goal {
   linkTotal?: boolean;  // se llena con el dinero total, por orden de prioridad
   order?: number;       // prioridad (1 = primero)
 }
-export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle' | 'ledger';
+export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle' | 'ledger' | 'status';
 export interface Rec<T = any> {
   id: string;
   kind: Kind;
@@ -65,7 +66,9 @@ export interface LedgerItem {
   amount?: number; settled?: number;  // monto unico y lo ya cobrado/pagado
   aside?: boolean;                // deuda aparte (no se cobra activamente)
 }
-export interface Setting { monthlyBudget?: number; includeReceivables?: boolean }
+export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: number; income?: number }
+export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean }
+export interface Status { person: string; level: 'green' | 'amber' | 'red'; month: string; text: string }
 export interface Item<T> { id: string; owner: string | null; data: T }
 
 export const INCOME_CATS = ['Nomina', 'Rendimientos', 'Freelance', 'Reembolso', 'Regalo', 'Otro ingreso'];

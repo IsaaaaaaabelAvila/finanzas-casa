@@ -42,6 +42,12 @@ export async function scheduleAll(accounts: Item<Account>[], txns: Item<Txn>[], 
       schedule: { on: { weekday: d.weekday, hour: cfg.hour, minute: cfg.minute }, allowWhileIdle: true }
     }));
 
+    notifications.push({
+      id: 105, title: 'Cierre de mes',
+      body: 'Revisa que todo este registrado y mira cuanto te sobro o falto el mes que cerro.',
+      schedule: { on: { day: 1, hour: 9, minute: 0 }, allowWhileIdle: true }
+    });
+
     // Avisos de gasto minimo: 5, 3 y 1 dia antes del corte, solo si aun falta
     let n = 1000;
     for (const acc of accounts) {

@@ -1,4 +1,4 @@
-import type { Account, Goal, Item, LedgerItem, Payroll, Person, Plan, Settle, Txn } from './types';
+import type { Account, Goal, Item, LedgerItem, Payroll, Person, Plan, Settle, Setting, Txn } from './types';
 
 export const money = (n: number) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 2 }).format(n || 0);
@@ -199,3 +199,79 @@ export function allocateGoals(goals: Item<Goal>[], total: number) {
   for (const g of linked) { const a = Math.min(g.data.target, rest); alloc[g.id] = a; rest -= a; }
   return { alloc, unassigned: rest, linked };
 }
+
+// ---------- Presupuesto rodante (libre para gastar) ----------
+export interface BudgetCtx {
+  me: string; myKey: string | null; txns: Item<Txn>[]; plans: Item<Plan>[]; ledger: Item<LedgerItem>[];
+  people: Person[]; payrolls: Item<Payroll>[]; setting: Setting | null;
+}
+/** Configuracion vigente en un mes (los cambios aplican solo hacia adelante). */
+export const cfgAt = (st: Setting | null, m: string) => {
+  const arr = (st?.plan ?? []).filter(c => c.from <= m);
+  return arr.length ? arr[arr.length - 1] : null;
+};
+const casaPct = (ctx: BudgetCtx, m: string) => houseSummary(m, ctx.people, ctx.payrolls, [], [], []).rows.find(r => r.key === ctx.myKey)?.pct ?? 0;
+
+/** Comprometido del mes: mis mensualidades, lo que debo a personas y mi parte de las mensualidades de la casa. */
+export function monthCommitments(ctx: BudgetCtx, m: string) {
+  const own = ctx.plans.filter(p => p.owner === ctx.me).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  const owe = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  const casaTotal = ctx.plans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  const casa = casaTotal * casaPct(ctx, m);
+  const advanced = ctx.ledger.filter(l => l.data.dir === 'owed').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  return { own, owe, casa, advanced, total: own + owe + casa };
+}
+
+/** Gastado en el mes (sin lo que ya cuenta por mensualidades): mis egresos y mi parte de los egresos de la casa. */
+export function monthSpent(ctx: BudgetCtx, m: string) {
+  const linked = new Set(ctx.plans.map(p => p.data.txnId).filter(Boolean) as string[]);
+  let own = 0, casa = 0;
+  for (const t of ctx.txns) {
+    if (t.data.type !== 'expense' || !t.data.date.startsWith(m)) continue;
+    if (t.owner === ctx.me) {
+      if (linked.has(t.id)) continue;
+      const led = t.data.ledgerId ? ctx.ledger.find(l => l.id === t.data.ledgerId) : undefined;
+      if (led && led.data.kind === 'installments') continue;
+      own += t.data.amount;
+    } else if (t.owner === null) casa += t.data.amount;
+  }
+  const casaShare = casa * casaPct(ctx, m);
+  return { own, casa: casaShare, total: own + casaShare };
+}
+
+export function monthBase(ctx: BudgetCtx, m: string) {
+  const c = cfgAt(ctx.setting, m);
+  if (!c) return 0;
+  return c.mode === 'budget' ? c.amount : (c.income ?? 0) - c.amount;
+}
+
+/** Presupuesto + arrastre del mes vencido - comprometido - gastado. El arrastre es el "libre" final del mes anterior. */
+export function budgetFor(ctx: BudgetCtx, month: string) {
+  const start = ctx.setting?.startMonth;
+  if (!start || !ctx.setting?.plan?.length || month < start) return null;
+  let carry = 0;
+  let m = start;
+  for (let i = 0; i < 240; i++) {
+    const base = monthBase(ctx, m);
+    const commit = monthCommitments(ctx, m).total;
+    const spent = monthSpent(ctx, m).total;
+    const libre = base + carry - commit - spent;
+    if (m === month) return { month: m, base, carry, commit, spent, libre };
+    carry = libre;
+    m = addMonthsYm(m, 1);
+  }
+  return null;
+}
+
+export type Level = 'green' | 'amber' | 'red';
+/** Semaforo: rojo si ya no queda para gastar; ambar si va mas rapido que el mes o queda poco; verde si va bien. */
+export function budgetLevel(b: { base: number; carry: number; commit: number; spent: number; libre: number }, now = new Date()): Level {
+  const g0 = b.base + b.carry - b.commit;
+  const dim = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const elapsed = now.getDate() / dim;
+  if (g0 <= 0 || b.libre <= 0) return 'red';
+  const used = b.spent / g0;
+  if (used > elapsed + 0.15 || b.libre < g0 * 0.15) return 'amber';
+  return 'green';
+}
+export const levelText = (l: Level) => l === 'green' ? 'Va bien este mes' : l === 'amber' ? 'Va por encima del ritmo del mes' : 'Ya no queda para gastar este mes';

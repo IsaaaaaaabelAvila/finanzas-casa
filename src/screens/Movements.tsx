@@ -90,13 +90,15 @@ export default function Movements({ d }: { d: Data }) {
     const concept = note.trim() || category || EXPENSE_CATS[EXPENSE_CATS.length - 1];
     const cat = category || EXPENSE_CATS[EXPENSE_CATS.length - 1];
     // el gasto cuenta como mio (mi parte) y aumenta mi deuda
-    save('txn', { type: 'expense', amount: mine, date, accountId: debtAcc.id, category: cat, note: `${concept} (pago ${owedPerson.trim()})` } as Txn, d.me);
     const months = Math.max(1, Math.round(num(owedMonths)));
+    let lid = '';
     if (months > 1) {
-      save('ledger', { person: owedPerson.trim(), dir: 'owe', concept, card: owedCard.trim() || undefined, kind: 'installments', monthly: Math.round((mine / months) * 100) / 100, months, firstMonth: owedFirst, paid: [] }, d.me);
+      lid = save('ledger', { person: owedPerson.trim(), dir: 'owe', concept, card: owedCard.trim() || undefined, kind: 'installments', monthly: Math.round((mine / months) * 100) / 100, months, firstMonth: owedFirst, paid: [] }, d.me);
     } else {
-      save('ledger', { person: owedPerson.trim(), dir: 'owe', concept, kind: 'lump', amount: mine, settled: 0 }, d.me);
+      lid = save('ledger', { person: owedPerson.trim(), dir: 'owe', concept, kind: 'lump', amount: mine, settled: 0 }, d.me);
     }
+    // el gasto cuenta como mio (mi parte) y aumenta mi deuda; su pago se cuenta por mensualidades
+    save('txn', { type: 'expense', amount: mine, date, accountId: debtAcc.id, category: cat, note: `${concept} (pago ${owedPerson.trim()})`, ledgerId: lid } as Txn, d.me);
     setAmount(''); setNote(''); setOpen(false);
   }
 

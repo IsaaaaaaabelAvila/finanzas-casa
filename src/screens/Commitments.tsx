@@ -1,20 +1,12 @@
-import { addMonthsYm, houseSummary, ledgerStatus, money, monthLabel, planStatus, ym } from '../calc';
+import { budgetCtx } from '../budget';
+import { addMonthsYm, monthCommitments, money, monthLabel, ym } from '../calc';
 import { Card, Data } from '../ui';
 
 /** Lo que ya tienes comprometido cada mes: mis mensualidades, lo que debo a personas y mi parte de las mensualidades de la casa. */
 export default function Commitments({ d }: { d: Data }) {
   const nowM = ym(new Date());
 
-  const pctFor = (m: string) => houseSummary(m, d.people, d.payrolls, [], [], []).rows.find(r => r.key === d.myKey)?.pct ?? 0;
-
-  const calc = (m: string) => {
-    const own = d.allPlans.filter(p => p.owner === d.me).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
-    const owe = d.ledger.filter(l => l.data.dir === 'owe').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
-    const casaTotal = d.allPlans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
-    const casa = casaTotal * pctFor(m);
-    const advanced = d.ledger.filter(l => l.data.dir === 'owed').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
-    return { own, owe, casa, advanced, total: own + owe + casa };
-  };
+  const calc = (m: string) => monthCommitments(budgetCtx(d), m);
 
   const months = Array.from({ length: 12 }, (_, k) => addMonthsYm(nowM, k));
   let last: string | null = null;
