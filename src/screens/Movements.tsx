@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addMonthsYm, firstPaymentMonth, money, planStatus, today, ym } from '../calc';
+import { accountBalance, addMonthsYm, firstPaymentMonth, money, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, INCOME_CATS, Txn, TxnType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -23,6 +23,7 @@ export default function Movements({ d }: { d: Data }) {
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
+  const [filterAcc, setFilterAcc] = useState('');
   // al elegir una cuenta de deudas, el egreso es algo que pago otra persona y yo le debo (aparece en "Yo debo")
   const [owedPerson, setOwedPerson] = useState('Iván');
   const [owedMonths, setOwedMonths] = useState('1');
@@ -40,7 +41,24 @@ export default function Movements({ d }: { d: Data }) {
   const knownPersons = [...new Set(d.ledger.map(l => l.data.person))];
   const useOwed = !editId && type === 'expense' && !shared && !!debtAcc;
 
-  const rows = d.txns.filter(t => t.data.date.startsWith(month)).sort((a, b) => b.data.date.localeCompare(a.data.date));
+  const rows = d.txns
+    .filter(t => t.data.date.startsWith(month))
+    .filter(t => !filterAcc || t.data.accountId === filterAcc || t.data.toAccountId === filterAcc)
+    .sort((a, b) => b.data.date.localeCompare(a.data.date));
+
+  // resumen de la cuenta filtrada, para conciliar contra la app del banco
+  const fAcc = filterAcc ? d.allAccounts.find(a => a.id === filterAcc) : undefined;
+  const fSum = fAcc ? (() => {
+    let inn = 0, out = 0, adj = 0;
+    for (const t of rows) {
+      const x = t.data;
+      if (x.type === 'income' && x.accountId === fAcc.id) inn += x.amount;
+      if (x.type === 'expense' && x.accountId === fAcc.id) out += x.amount;
+      if (x.type === 'adjust' && x.accountId === fAcc.id) adj += x.amount;
+      if (x.type === 'transfer') { if (x.accountId === fAcc.id) out += x.amount; if (x.toAccountId === fAcc.id) inn += x.amount; }
+    }
+    return { inn, out, adj, balance: accountBalance(fAcc, d.allTxns, d.allPlans) };
+  })() : null;
 
   function resetForm() {
     setEditId(null); setOpen(false); setAmount(''); setNote(''); setCategory(''); setToAccountId(''); setAccountId('');
@@ -109,6 +127,23 @@ export default function Movements({ d }: { d: Data }) {
         <button className="primary" onClick={() => (open ? resetForm() : setOpen(true))}>{open ? 'Cerrar' : '+ Nuevo'}</button>
       </div>
 
+      <div className="filterbar">
+        <select value={filterAcc} onChange={e => setFilterAcc(e.target.value)}>
+          <option value="">Todas las cuentas</option>
+          {accs.map(a => <option key={a.id} value={a.id}>{a.data.name}</option>)}
+        </select>
+      </div>
+
+      {fAcc && fSum && (
+        <Card title={`${fAcc.data.name} · conciliacion`}>
+          <div className="row"><small>{fAcc.data.type === 'credit' ? 'Deuda segun la app' : 'Saldo segun la app'} (hoy)</small><b className={fSum.balance < 0 ? 'neg' : ''}>{fAcc.data.type === 'credit' && fSum.balance < 0 ? money(-fSum.balance) : money(fSum.balance)}</b></div>
+          <div className="row"><small>Entradas del mes</small><span className="pos">{money(fSum.inn)}</span></div>
+          <div className="row"><small>Salidas del mes</small><span className="neg">{money(fSum.out)}</span></div>
+          {fSum.adj !== 0 && <div className="row"><small>Ajustes del mes</small><span>{money(fSum.adj)}</span></div>}
+          <p className="hint">Compara con tu app del banco. Si no coincide, revisa que la lista tenga todo lo que aparece en el estado de cuenta; lo que falte, lo registras aqui.</p>
+        </Card>
+      )}
+
       {open && (
         <Card title={editId ? 'Editar movimiento' : 'Nuevo movimiento'}>
           {accs.length === 0 && <p className="error">Primero crea una cuenta en la pestana Cuentas.</p>}
@@ -171,7 +206,7 @@ export default function Movements({ d }: { d: Data }) {
       )}
 
       <Card>
-        {rows.length === 0 ? <Empty>Sin movimientos este mes.</Empty> : rows.map(t => (
+        {rows.length === 0 ? <Empty>{filterAcc ? 'Sin movimientos de esta cuenta este mes.' : 'Sin movimientos este mes.'}</Empty> : rows.map(t => (
           <div key={t.id} className="tx">
             <div>
               <b>{t.data.note || <span style={{ opacity: 0.6 }}>{t.data.category} (sin concepto)</span>}</b>
