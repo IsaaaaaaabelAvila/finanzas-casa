@@ -1,5 +1,6 @@
 import { budgetCtx } from '../budget';
 import { addMonthsYm, budgetFor, budgetLevel, houseSummary, levelText, money, monthLabel, ym } from '../calc';
+import { save } from '../store';
 import { Bar, Card, Data } from '../ui';
 
 const COLOR = { green: 'var(--good)', amber: 'var(--warn)', red: 'var(--bad)' } as const;
@@ -29,8 +30,10 @@ export default function FreeCard({ d }: { d: Data }) {
   const partner = hs?.rows.find(r => r.key !== d.myKey);
 
   // meses cerrados desde el inicio
-  const closed: { m: string; libre: number }[] = [];
-  if (!preview) for (let m = start; m < cur; m = addMonthsYm(m, 1)) { const x = budgetFor(ctx, m); if (x) closed.push({ m, libre: x.libre }); }
+  const closed: NonNullable<ReturnType<typeof budgetFor>>[] = [];
+  if (!preview) for (let m = start; m < cur; m = addMonthsYm(m, 1)) { const x = budgetFor(ctx, m); if (x) closed.push(x); }
+  const setPct = (m: string, pct: number) => save('setting', { ...(d.setting?.data ?? {}), carryDecisions: { ...(d.setting?.data.carryDecisions ?? {}), [m]: pct } }, d.me, d.setting?.id);
+  const askPct = (m: string, cur: number) => { const v = prompt('¿Que % pasa al mes siguiente? (0 a 100). El resto queda en tu ahorro.', String(cur)); if (v === null) return; const n = Math.max(0, Math.min(100, parseFloat(v.replace(',', '.')))); if (Number.isFinite(n)) setPct(m, n); };
 
   return (
     <>
@@ -64,12 +67,26 @@ export default function FreeCard({ d }: { d: Data }) {
 
       {closed.length > 0 && (
         <Card title="Cierres de mes">
-          {closed.slice(-6).reverse().map(c => (
-            <div key={c.m} className="row" style={{ marginBottom: 6 }}>
-              <span>{monthLabel(c.m)}</span>
-              <b className={c.libre >= 0 ? 'pos' : 'neg'}>{c.libre >= 0 ? `sobro ${money(c.libre)}` : `falto ${money(-c.libre)}`}</b>
-            </div>
-          ))}
+          <p className="hint">Decide que hacer con lo que sobro o falto: cuanto pasa al mes siguiente y el resto se queda en tu ahorro (tu dinero total, el que repartes en metas).</p>
+          {closed.slice(-6).reverse().map(c => {
+            const keep = c.libre - c.next;
+            return (
+              <div key={c.month} className="debt">
+                <div className="row"><span>{monthLabel(c.month)}</span><b className={c.libre >= 0 ? 'pos' : 'neg'}>{c.libre >= 0 ? `sobro ${money(c.libre)}` : `falto ${money(-c.libre)}`}</b></div>
+                <small>
+                  {c.libre >= 0
+                    ? `Al mes siguiente: ${money(c.next)} (${c.pct}%) · A ahorro: ${money(keep)}`
+                    : `Recuperas el mes siguiente: ${money(-c.next)} (${c.pct}%) · Se quita del ahorro: ${money(-keep)}`}
+                </small>
+                <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
+                  <button className="link" onClick={() => setPct(c.month, 100)}>{c.libre >= 0 ? 'Todo al mes' : 'Recuperar todo'}</button>
+                  <button className="link" onClick={() => setPct(c.month, 50)}>Mitad</button>
+                  <button className="link" onClick={() => setPct(c.month, 0)}>{c.libre >= 0 ? 'Todo a ahorro' : 'Quitarlo del ahorro'}</button>
+                  <button className="link" onClick={() => askPct(c.month, c.pct)}>Otro %</button>
+                </div>
+              </div>
+            );
+          })}
         </Card>
       )}
     </>

@@ -3,7 +3,7 @@ import { cloudEnabled } from '../supabase';
 import { getState, save, setState, useStore } from '../store';
 import { syncNow } from '../sync';
 import { getNotifSettings, isNative, requestPermission, saveNotifSettings } from '../notifications';
-import { cfgAt, ym } from '../calc';
+import { carryCfgAt, cfgAt, ym } from '../calc';
 import { Card, Data, num } from '../ui';
 
 export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSignOut: () => void; onLocalSetup: () => void }) {
@@ -16,6 +16,9 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
   const [mode, setMode] = useState<'budget' | 'saving'>(eff?.mode ?? 'budget');
   const [amount, setAmount] = useState(eff ? String(eff.amount) : (d.setting?.data.monthlyBudget ? String(d.setting.data.monthlyBudget) : ''));
   const startMonth = d.setting?.data.startMonth ?? '2026-11';
+  const carryNow = carryCfgAt(d.setting?.data ?? null, cur);
+  const [posPct, setPosPct] = useState(carryNow.pos);
+  const [negPct, setNegPct] = useState(carryNow.neg);
   const prevStart = (() => { const [y, mo] = (d.setting?.data.startMonth ?? '2026-11').split('-').map(Number); return ym(new Date(y, mo - 2, 1)); })();
   const [prevIncome, setPrevIncome] = useState(d.setting?.data.incomeOverrides?.[prevStart] !== undefined ? String(d.setting!.data.incomeOverrides![prevStart]) : '');
   const [from, setFrom] = useState(cur < startMonth ? startMonth : cur);
@@ -26,7 +29,8 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
     const entry = { from: f, mode, amount: num(amount) };
     const plan = [...(base.plan ?? []).filter(c => c.from !== f), entry].sort((a, b) => a.from.localeCompare(b.from));
     const incomeOverrides = { ...(base.incomeOverrides ?? {}), ...(mode === 'saving' && prevIncome !== '' ? { [prevStart]: num(prevIncome) } : {}) };
-    save('setting', { ...base, startMonth, plan, incomeOverrides }, d.me, d.setting?.id);
+    const carry = [...(base.carry ?? []).filter(c => c.from !== f), { from: f, pos: posPct, neg: negPct }].sort((a, b) => a.from.localeCompare(b.from));
+    save('setting', { ...base, startMonth, plan, incomeOverrides, carry }, d.me, d.setting?.id);
     setMsg(`Guardado: aplica desde ${f}. Los meses anteriores y su arrastre no cambian.`);
   }
 
@@ -80,6 +84,17 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
             </label>
           </>
         )}
+        <label className="field"><span>Si me sobra al cerrar el mes, pasa al mes siguiente:</span>
+          <select value={posPct} onChange={e => setPosPct(Number(e.target.value))}>
+            {[100, 75, 50, 25, 0].map(v => <option key={v} value={v}>{v}%{v === 100 ? ' (todo para gastar)' : v === 0 ? ' (todo a ahorro)' : ''}</option>)}
+          </select>
+        </label>
+        <label className="field"><span>Si me falta al cerrar el mes, lo recupero el mes siguiente:</span>
+          <select value={negPct} onChange={e => setNegPct(Number(e.target.value))}>
+            {[100, 75, 50, 25, 0].map(v => <option key={v} value={v}>{v}%{v === 100 ? ' (todo)' : v === 0 ? ' (nada: se quita del ahorro)' : ''}</option>)}
+          </select>
+        </label>
+        <p className="hint">Lo que no pasa al mes siguiente se queda en tu ahorro, es decir, en tu dinero total. En cada cierre puedes cambiar esta decision para ese mes.</p>
         <label className="field"><span>Aplicar desde el mes</span>
           <input type="month" min={startMonth} value={from} onChange={e => setFrom(e.target.value)} />
         </label>
