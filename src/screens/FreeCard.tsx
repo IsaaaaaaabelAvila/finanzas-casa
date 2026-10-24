@@ -1,5 +1,5 @@
 import { budgetCtx } from '../budget';
-import { addMonthsYm, budgetFor, budgetLevel, levelText, money, monthLabel, ym } from '../calc';
+import { addMonthsYm, budgetFor, budgetLevel, houseSummary, levelText, money, monthLabel, ym } from '../calc';
 import { Bar, Card, Data } from '../ui';
 
 const COLOR = { green: 'var(--good)', amber: 'var(--warn)', red: 'var(--bad)' } as const;
@@ -24,6 +24,11 @@ export default function FreeCard({ d }: { d: Data }) {
   const projected = !preview && day > 0 ? g0 - (b.spent / day) * dim : null;
   const cfgNow = (st.plan ?? []).filter(c => c.from <= month).slice(-1)[0];
 
+  // estimado de como cerraria la casa este mes (con el porcentaje del ultimo mes cerrado)
+  const hs = preview ? null : houseSummary(month, d.people, d.payrolls, d.allTxns, d.allPlans, d.settles, addMonthsYm(month, -1));
+  const mine = hs?.rows.find(r => r.key === d.myKey);
+  const partner = hs?.rows.find(r => r.key !== d.myKey);
+
   // meses cerrados desde el inicio
   const closed: { m: string; libre: number }[] = [];
   if (!preview) for (let m = start; m < cur; m = addMonthsYm(m, 1)) { const x = budgetFor(ctx, m); if (x) closed.push({ m, libre: x.libre }); }
@@ -38,6 +43,21 @@ export default function FreeCard({ d }: { d: Data }) {
         <div className="row"><small>Arrastre del mes anterior</small><span className={b.carry < 0 ? 'neg' : b.carry > 0 ? 'pos' : ''}>{b.carry >= 0 ? '+' : '−'}{money(Math.abs(b.carry))}</span></div>
         <div className="row"><small>Comprometido (mensualidades, deudas, tu parte de la casa)</small><span>−{money(b.commit)}</span></div>
         <div className="row"><small>Gastado en el mes</small><span>−{money(b.spent)}</span></div>
+        {mine && hs && (mine.paid > 0 || mine.should > 0) && (
+          <div className="settle">
+            <small>CASA · ESTIMADO DEL MES</small>
+            <div className="row"><small>Has pagado</small><span>{money(mine.paid)}</span></div>
+            <div className="row"><small>Te tocan ({(mine.pct * 100).toFixed(1)}%)</small><span>{money(mine.should)}</span></div>
+            {hs.settle
+              ? <p className="hint">Este mes ya esta liquidado.</p>
+              : mine.diff > 0.5
+                ? <p className="hint">A fin de mes {partner?.name ?? 'tu pareja'} te regresaria ~<b>{money(mine.diff)}</b>. Ya esta contado en tu libre: solo se descuenta lo que te toca.</p>
+                : mine.diff < -0.5
+                  ? <p className="hint">A fin de mes le darias a {partner?.name ?? 'tu pareja'} ~<b>{money(-mine.diff)}</b>. Tu libre ya descuenta tu parte completa.</p>
+                  : <p className="hint">Van a mano por ahora.</p>}
+            <p className="hint">Se actualiza solo conforme se registran los gastos de la casa de los dos.</p>
+          </div>
+        )}
         {!preview && perDay > 0 && <p className="hint">Puedes gastar ~<b>{money(perDay)}</b> al dia el resto del mes.</p>}
         {projected !== null && <p className="hint">Al ritmo de hoy terminarias el mes con {projected >= 0 ? <b>{money(projected)}</b> : <b className="neg">−{money(-projected)}</b>}.</p>}
         {!preview && cfgNow?.mode === 'saving' && <p className="hint">Ahorro fijo del mes: {money(cfgNow.amount)} (ya apartado de la nomina esperada).</p>}

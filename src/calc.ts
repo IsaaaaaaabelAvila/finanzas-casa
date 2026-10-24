@@ -130,11 +130,12 @@ export function planStatus(p: Plan, month = ym(new Date())) {
 
 // ---------- Reparto de la casa ----------
 export interface HouseRow { key: string; name: string; income: number; pct: number; cash: number; installments: number; paid: number; should: number; diff: number }
-export function houseSummary(month: string, people: Person[], payrolls: Item<Payroll>[], txns: Item<Txn>[], plans: Item<Plan>[], settles: Item<Settle>[]) {
+export function houseSummary(month: string, people: Person[], payrolls: Item<Payroll>[], txns: Item<Txn>[], plans: Item<Plan>[], settles: Item<Settle>[], pctMonth?: string) {
   const amountIn = (m: string, k: string) => payrolls.filter(p => p.data.month === m && p.data.person === k).reduce((a, p) => a + p.data.amount, 0);
   const complete = (m: string) => people.length > 0 && people.every(p => amountIn(m, p.key) > 0);
   const months = [...new Set(payrolls.map(p => p.data.month))].sort();
-  const base = complete(month) ? month : months.filter(m => m < month && complete(m)).pop() ?? null;
+  const pick = (lim: string) => (complete(lim) ? lim : months.filter(m => m < lim && complete(m)).pop() ?? null);
+  const base = pick(pctMonth ?? month);
   const missing = people.filter(p => amountIn(month, p.key) <= 0).map(p => p.name);
   const incomeOf = (k: string) => payrolls.filter(p => p.data.month === base && p.data.person === k).reduce((a, p) => a + p.data.amount, 0);
   const totalIncome = people.reduce((a, p) => a + incomeOf(p.key), 0);
@@ -210,7 +211,10 @@ export const cfgAt = (st: Setting | null, m: string) => {
   const arr = (st?.plan ?? []).filter(c => c.from <= m);
   return arr.length ? arr[arr.length - 1] : null;
 };
-const casaPct = (ctx: BudgetCtx, m: string) => houseSummary(m, ctx.people, ctx.payrolls, [], [], []).rows.find(r => r.key === ctx.myKey)?.pct ?? 0;
+const casaPct = (ctx: BudgetCtx, m: string) => {
+  const ref = m >= ym(new Date()) ? addMonthsYm(m, -1) : m; // a medio mes las nominas son parciales: se usa el ultimo mes cerrado
+  return houseSummary(m, ctx.people, ctx.payrolls, [], [], [], ref).rows.find(r => r.key === ctx.myKey)?.pct ?? 0;
+};
 
 /** Comprometido del mes: mis mensualidades, lo que debo a personas y mi parte de las mensualidades de la casa. */
 export function monthCommitments(ctx: BudgetCtx, m: string) {
