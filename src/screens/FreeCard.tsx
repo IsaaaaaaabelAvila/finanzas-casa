@@ -1,13 +1,15 @@
 import { budgetCtx } from '../budget';
 import { addMonthsYm, budgetFor, budgetLevel, houseSummary, levelText, money, monthLabel, ym } from '../calc';
 import { save } from '../store';
-import { Bar, Card, Data } from '../ui';
+import { useState } from 'react';
+import { Bar, Card, Data, num } from '../ui';
 
 const COLOR = { green: 'var(--good)', amber: 'var(--warn)', red: 'var(--bad)' } as const;
 
 /** Tarjeta "Libre para gastar": presupuesto + arrastre - comprometido - gastado. */
 export default function FreeCard({ d }: { d: Data }) {
   const ctx = budgetCtx(d);
+  const [inp, setInp] = useState<Record<string, string>>({});
   const st = d.setting!.data;
   const now = new Date();
   const cur = ym(now);
@@ -32,8 +34,7 @@ export default function FreeCard({ d }: { d: Data }) {
   // meses cerrados desde el inicio
   const closed: NonNullable<ReturnType<typeof budgetFor>>[] = [];
   if (!preview) for (let m = start; m < cur; m = addMonthsYm(m, 1)) { const x = budgetFor(ctx, m); if (x) closed.push(x); }
-  const setPct = (m: string, pct: number) => save('setting', { ...(d.setting?.data ?? {}), carryDecisions: { ...(d.setting?.data.carryDecisions ?? {}), [m]: pct } }, d.me, d.setting?.id);
-  const askPct = (m: string, cur: number) => { const v = prompt('¿Que % pasa al mes siguiente? (0 a 100). El resto queda en tu ahorro.', String(cur)); if (v === null) return; const n = Math.max(0, Math.min(100, parseFloat(v.replace(',', '.')))); if (Number.isFinite(n)) setPct(m, n); };
+  const setNext = (m: string, amount: number) => { save('setting', { ...(d.setting?.data ?? {}), carryDecisions: { ...(d.setting?.data.carryDecisions ?? {}), [m]: amount } }, d.me, d.setting?.id); setInp(p => { const n = { ...p }; delete n[m]; return n; }); };
 
   return (
     <>
@@ -67,23 +68,23 @@ export default function FreeCard({ d }: { d: Data }) {
 
       {closed.length > 0 && (
         <Card title="Cierres de mes">
-          <p className="hint">Decide que hacer con lo que sobro o falto: cuanto pasa al mes siguiente y el resto se queda en tu ahorro (tu dinero total, el que repartes en metas).</p>
+          <p className="hint">Escribe cuanto pasa al mes siguiente. Lo demas se queda en tu ahorro: tu dinero total, el que repartes en metas.</p>
           {closed.slice(-6).reverse().map(c => {
+            const over = c.libre >= 0;
+            const val = inp[c.month] ?? String(Math.round(Math.abs(c.next) * 100) / 100);
             const keep = c.libre - c.next;
             return (
               <div key={c.month} className="debt">
-                <div className="row"><span>{monthLabel(c.month)}</span><b className={c.libre >= 0 ? 'pos' : 'neg'}>{c.libre >= 0 ? `sobro ${money(c.libre)}` : `falto ${money(-c.libre)}`}</b></div>
-                <small>
-                  {c.libre >= 0
-                    ? `Al mes siguiente: ${money(c.next)} (${c.pct}%) · A ahorro: ${money(keep)}`
-                    : `Recuperas el mes siguiente: ${money(-c.next)} (${c.pct}%) · Se quita del ahorro: ${money(-keep)}`}
-                </small>
+                <div className="row"><span>{monthLabel(c.month)}</span><b className={over ? 'pos' : 'neg'}>{over ? `sobro ${money(c.libre)}` : `falto ${money(-c.libre)}`}</b></div>
+                <label className="field" style={{ margin: '8px 0 4px' }}><span>{over ? 'Pasa al mes siguiente para gastar' : 'Lo recuperas el mes siguiente'}</span>
+                  <input inputMode="decimal" value={val} onChange={e => setInp(p => ({ ...p, [c.month]: e.target.value }))} />
+                </label>
                 <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
-                  <button className="link" onClick={() => setPct(c.month, 100)}>{c.libre >= 0 ? 'Todo al mes' : 'Recuperar todo'}</button>
-                  <button className="link" onClick={() => setPct(c.month, 50)}>Mitad</button>
-                  <button className="link" onClick={() => setPct(c.month, 0)}>{c.libre >= 0 ? 'Todo a ahorro' : 'Quitarlo del ahorro'}</button>
-                  <button className="link" onClick={() => askPct(c.month, c.pct)}>Otro %</button>
+                  <button disabled={inp[c.month] === undefined} onClick={() => setNext(c.month, over ? Math.abs(num(val)) : -Math.abs(num(val)))}>Aplicar</button>
+                  <button className="link" onClick={() => setNext(c.month, c.libre)}>{over ? 'Todo al mes' : 'Recuperar todo'}</button>
+                  <button className="link" onClick={() => setNext(c.month, 0)}>{over ? 'Todo a ahorro' : 'Quitarlo del ahorro'}</button>
                 </div>
+                <small>{over ? `A ahorro (queda en tu dinero total): ${money(keep)}` : `Se quita del ahorro: ${money(-keep)} (tu dinero total ya lo refleja)`}</small>
               </div>
             );
           })}

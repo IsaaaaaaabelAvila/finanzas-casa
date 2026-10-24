@@ -257,17 +257,11 @@ export function monthBase(ctx: BudgetCtx, m: string) {
   return c.mode === 'budget' ? c.amount : monthIncome(ctx, addMonthsYm(m, -1)) - c.amount;
 }
 
-/** Politica de arrastre vigente en un mes (por defecto todo pasa al mes siguiente). Los cambios aplican solo hacia adelante. */
-export const carryCfgAt = (st: Setting | null, m: string) => {
-  const arr = (st?.carry ?? []).filter(c => c.from <= m);
-  return arr.length ? arr[arr.length - 1] : { from: '', pos: 100, neg: 100 };
-};
-/** % del libre del mes m que pasa al siguiente: la decision de ese mes, o la politica (sobra / falta). El resto queda en el ahorro (dinero total). */
-export function carryPct(st: Setting | null, m: string, libre: number) {
+/** Lo que pasa al mes siguiente del libre del mes m: el monto decidido (entre 0 y el libre) o, sin decision, todo. El resto queda en el ahorro (dinero total). */
+export function carryNext(st: Setting | null, m: string, libre: number) {
   const d = st?.carryDecisions?.[m];
-  if (d !== undefined) return d;
-  const c = carryCfgAt(st, m);
-  return libre >= 0 ? c.pos : c.neg;
+  if (d === undefined) return libre;
+  return libre >= 0 ? Math.max(0, Math.min(libre, d)) : Math.min(0, Math.max(libre, d));
 }
 
 /** Presupuesto + arrastre del mes vencido - comprometido - gastado. El arrastre es el "libre" final del mes anterior. */
@@ -281,8 +275,8 @@ export function budgetFor(ctx: BudgetCtx, month: string) {
     const commit = monthCommitments(ctx, m).total;
     const spent = monthSpent(ctx, m).total;
     const libre = base + carry - commit - spent;
-    const pct = carryPct(ctx.setting, m, libre);
-    const next = (libre * pct) / 100;
+    const next = carryNext(ctx.setting, m, libre);
+    const pct = libre !== 0 ? (next / libre) * 100 : 100;
     if (m === month) return { month: m, base, carry, commit, spent, libre, pct, next };
     carry = next;
     m = addMonthsYm(m, 1);
