@@ -34,11 +34,7 @@ export default function Accounts({ d }: { d: Data }) {
     reset();
   }
 
-  return (
-    <>
-      <div className="month-nav"><b>Cuentas y tarjetas</b><button className="primary" onClick={() => (open ? reset() : setOpen(true))}>{open ? 'Cerrar' : '+ Nueva'}</button></div>
-
-      {open && (
+  const formCard = (
         <Card title={editId ? 'Editar cuenta' : 'Nueva cuenta'}>
           <Field label="Nombre"><input value={f.name} onChange={e => set('name', e.target.value)} placeholder="BBVA debito, Nu credito…" /></Field>
           <Field label="Tipo">
@@ -58,9 +54,15 @@ export default function Accounts({ d }: { d: Data }) {
           )}
           <label className="check"><input type="checkbox" checked={f.inTotal} onChange={e => set('inTotal', e.target.checked)} /> Contar en el total de mi dinero</label>
           {!editId && <label className="check"><input type="checkbox" checked={f.shared} onChange={e => set('shared', e.target.checked)} /> Cuenta compartida de la casa</label>}
-          <button className="primary" onClick={submit}>Guardar</button>
+          <div className="row-actions" style={{ justifyContent: "flex-start", gap: 8 }}><button className="primary" onClick={submit}>Guardar</button><button onClick={reset}>Cancelar</button></div>
         </Card>
-      )}
+  );
+
+  return (
+    <>
+      <div className="month-nav"><b>Cuentas y tarjetas</b><button className="primary" onClick={() => (open ? reset() : setOpen(true))}>{open ? 'Cerrar' : '+ Nueva'}</button></div>
+
+      {open && !editId && formCard}
 
       {d.accounts.length > 0 && (() => {
         const t = totalFunds(d.accounts, d.allTxns, d.allPlans);
@@ -80,6 +82,7 @@ export default function Accounts({ d }: { d: Data }) {
       {[...d.accounts].sort((x, y) => ORDER.indexOf(x.data.type) - ORDER.indexOf(y.data.type)).map(a => {
         const bal = accountBalance(a, d.allTxns, d.allPlans);
         const ms = minSpend(a, d.allTxns, d.allPlans);
+        if (open && editId === a.id) return <div key={a.id}>{formCard}</div>;
         return (
           <Card key={a.id}>
             <div className="row">
