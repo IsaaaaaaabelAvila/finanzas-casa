@@ -107,6 +107,14 @@ function PlansList({ d }: { d: Data }) {
               );
             })}
           </div>
+          {p.owner === d.me && d.goals.length > 0 && (
+            <label className="field" style={{ margin: '8px 0 0' }}><span>Se paga con la meta</span>
+              <select value={p.data.goalId ?? ''} onChange={e => save('plan', { ...p.data, goalId: e.target.value || undefined }, p.owner, p.id)}>
+                <option value="">— ninguna (resta de mi libre) —</option>
+                {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
+              </select>
+            </label>
+          )}
           <div className="row-actions"><button className="link danger" onClick={() => confirm('¿Borrar?') && remove(p.id)}>Borrar</button></div>
         </Card>
       ))}

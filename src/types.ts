@@ -9,6 +9,7 @@ export interface Account {
   minSpend?: number;    // gasto minimo por periodo para evitar cobro por inactividad
   maxSpend?: number;    // tope de gasto por periodo (credito)
   inTotal?: boolean;    // cuenta dentro del total de dinero (por defecto: debito, efectivo y credito)
+  auto?: 'owe';         // saldo = lo que debo en "Yo debo" (se calcula solo)
   feeNote?: string;
 }
 export type TxnType = 'income' | 'expense' | 'transfer' | 'adjust';
@@ -22,6 +23,8 @@ export interface Txn {
   note: string;
   paidBy?: string;      // clave de la persona que pago (gastos de la casa)
   ledgerId?: string;    // deuda a personas que creo este gasto (se cuenta por mensualidades)
+  payOf?: string;       // pago de una deuda (id:mes); no es consumo ni resta del libre
+  goalId?: string;      // se paga con el dinero de esta meta; no resta del libre
 }
 export interface Plan {
   accountId?: string;
@@ -34,6 +37,7 @@ export interface Plan {
   paidBy?: string;      // clave de la persona que paga (compras de la casa)
   category?: string;    // categoria del gasto
   txnId?: string;       // movimiento del que viene (ya cuenta como gasto; la compra no se suma otra vez)
+  goalId?: string;      // se paga con el dinero de esta meta; no resta del libre
 }
 export interface Goal {
   name: string;
@@ -65,6 +69,7 @@ export interface LedgerItem {
   monthly?: number; months?: number; firstMonth?: string; paid?: string[];
   amount?: number; settled?: number;  // monto unico y lo ya cobrado/pagado
   aside?: boolean;                // deuda aparte (no se cobra activamente)
+  goalId?: string;                // se paga con el dinero de esta meta; no resta del libre
 }
 export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: number; income?: number }
 export interface CarryCfg { from: string; pos: number; neg: number }  // % del sobrante / faltante que pasa al mes siguiente

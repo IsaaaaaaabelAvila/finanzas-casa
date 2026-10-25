@@ -13,9 +13,10 @@ export default function Goals({ d }: { d: Data }) {
   const set = (k: keyof typeof f, v: any) => setF(p => ({ ...p, [k]: v }));
 
   const sorted = [...d.goals].sort((a, b) => (a.data.order ?? 1e9) - (b.data.order ?? 1e9));
-  const al = allocateGoals(d.goals, d.total);
+  const al = allocateGoals(d.goals, d.total, d.goalCommitted);
+  const progress = (g: (typeof d.goals)[number]) => Math.min(g.data.target, (al.alloc[g.id] ?? 0) + (d.goalCommitted[g.id] ?? 0));
   const targetSum = al.linked.reduce((a, g) => a + g.data.target, 0);
-  const allocSum = al.linked.reduce((a, g) => a + (al.alloc[g.id] ?? 0), 0);
+  const allocSum = al.linked.reduce((a, g) => a + progress(g), 0);
 
   function reset() { setF(EMPTY); setEditId(null); setOpen(false); }
 
@@ -82,7 +83,7 @@ export default function Goals({ d }: { d: Data }) {
       {d.goals.length === 0 && <Card><Empty>Aun no hay metas.</Empty></Card>}
       {sorted.map((g, idx) => {
         if (open && editId === g.id) return <div key={g.id}>{formCard}</div>;
-        const savedNow = g.data.linkTotal ? (al.alloc[g.id] ?? 0) : g.data.saved;
+        const savedNow = g.data.linkTotal ? progress(g) : g.data.saved;
         const p = goalPlan(g.data.target, savedNow, g.data.deadline);
         return (
           <Card key={g.id}>
@@ -96,6 +97,7 @@ export default function Goals({ d }: { d: Data }) {
             </div>
             <Bar pct={p.pct} tone={p.pct >= 100 ? 'good' : 'warn'} />
             <div className="row"><span>{money(savedNow)} de {money(g.data.target)}</span><b>{p.pct.toFixed(0)}%</b></div>
+            {(d.goalCommitted[g.id] ?? 0) > 0 && <small>Ya comprometido en esta meta: {money(d.goalCommitted[g.id])} · ahorrado: {money(al.alloc[g.id] ?? 0)}</small>}
             <small>
               {p.left === 0 ? '¡Meta completa!' : <>Te faltan <b>{money(p.left)}</b>{p.perMonth !== null && <> · {p.monthsLeft} meses → <b>{money(p.perMonth)}/mes</b></>}</>}
             </small>

@@ -65,7 +65,7 @@ export default function Accounts({ d }: { d: Data }) {
       {open && !editId && formCard}
 
       {d.accounts.length > 0 && (() => {
-        const t = totalFunds(d.accounts, d.allTxns, d.allPlans);
+        const t = totalFunds(d.accounts, d.allTxns, d.allPlans, d.oweLeft);
         return (
           <Card className="total">
             <small>DINERO TOTAL</small>
@@ -80,7 +80,7 @@ export default function Accounts({ d }: { d: Data }) {
 
       {d.accounts.length === 0 && <Card><Empty>Aun no hay cuentas en esta vista.</Empty></Card>}
       {[...d.accounts].sort((x, y) => ORDER.indexOf(x.data.type) - ORDER.indexOf(y.data.type)).map(a => {
-        const bal = accountBalance(a, d.allTxns, d.allPlans);
+        const bal = accountBalance(a, d.allTxns, d.allPlans, d.oweLeft);
         const ms = minSpend(a, d.allTxns, d.allPlans);
         if (open && editId === a.id) return <div key={a.id}>{formCard}</div>;
         return (

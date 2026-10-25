@@ -22,7 +22,8 @@ export function period(cutDay: number, ref = new Date()) {
 }
 
 /** Saldo de la cuenta. Para tarjetas de credito un saldo negativo es deuda. */
-export function accountBalance(acc: Item<Account>, txns: Item<Txn>[], plans: Item<Plan>[]): number {
+export function accountBalance(acc: Item<Account>, txns: Item<Txn>[], plans: Item<Plan>[], oweLeft = 0): number {
+  if (acc.data.auto === 'owe') return -oweLeft; // cuenta de deudas: sale de la lista "Yo debo"
   let bal = acc.data.type === 'credit' ? -acc.data.initial : acc.data.initial;
   for (const t of txns) {
     const x = t.data;
@@ -95,10 +96,10 @@ export function spendCap(acc: Item<Account>, txns: Item<Txn>[], plans: Item<Plan
 export const inTotal = (a: Item<Account>) => a.data.inTotal ?? ['debit', 'cash', 'credit'].includes(a.data.type);
 
 /** Dinero total: suma de saldos de las cuentas marcadas como "en el total" (las tarjetas restan su deuda). */
-export function totalFunds(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[]) {
+export function totalFunds(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[], oweLeft = 0) {
   let total = 0, liquid = 0, cards = 0, outside = 0;
   for (const a of accs) {
-    const b = accountBalance(a, txns, plans);
+    const b = accountBalance(a, txns, plans, oweLeft);
     if (!inTotal(a)) { outside += b; continue; }
     total += b;
     if (a.data.type === 'credit') cards += b; else liquid += b;
@@ -193,13 +194,31 @@ export function pendingReceivables(plans: Item<Plan>[], ledger: Item<LedgerItem>
 }
 
 /** Reparte el dinero total entre las metas ligadas, en orden de prioridad (la primera se llena primero). */
-export function allocateGoals(goals: Item<Goal>[], total: number) {
+export function allocateGoals(goals: Item<Goal>[], total: number, committed: Record<string, number> = {}) {
   const linked = goals.filter(g => g.data.linkTotal).sort((a, b) => (a.data.order ?? 1e9) - (b.data.order ?? 1e9));
   let rest = Math.max(0, total);
   const alloc: Record<string, number> = {};
-  for (const g of linked) { const a = Math.min(g.data.target, rest); alloc[g.id] = a; rest -= a; }
+  for (const g of linked) {
+    const room = Math.max(0, g.data.target - (committed[g.id] ?? 0)); // lo ya comprometido en la meta cuenta dentro de su presupuesto
+    const a = Math.min(room, rest);
+    alloc[g.id] = a; rest -= a;
+  }
   return { alloc, unassigned: rest, linked };
 }
+
+/** Lo que ya esta comprometido con cada meta: compras, deudas y gastos marcados "se pagan con la meta". */
+export function goalCommitted(me: string, ledger: Item<LedgerItem>[], plans: Item<Plan>[], txns: Item<Txn>[]) {
+  const out: Record<string, number> = {};
+  const add = (id: string | undefined, v: number) => { if (id) out[id] = (out[id] ?? 0) + v; };
+  for (const l of ledger) if (l.data.dir === 'owe') add(l.data.goalId, l.data.kind === 'installments' ? (l.data.monthly ?? 0) * (l.data.months ?? 0) : (l.data.amount ?? 0));
+  const linked = new Set(plans.map(p => p.data.txnId).filter(Boolean) as string[]);
+  for (const p of plans) if (p.owner === me) add(p.data.goalId, p.data.total);
+  for (const t of txns) if (t.owner === me && t.data.type === 'expense' && !t.data.payOf && !linked.has(t.id)) add(t.data.goalId, t.data.amount);
+  return out;
+}
+
+/** Lo que debo en "Yo debo" (lo que falta por pagar). */
+export const oweRemaining = (ledger: Item<LedgerItem>[]) => ledger.filter(l => l.data.dir === 'owe').reduce((a, l) => a + ledgerStatus(l.data).left, 0);
 
 // ---------- Presupuesto rodante (libre para gastar) ----------
 export interface BudgetCtx {
@@ -218,8 +237,8 @@ const casaPct = (ctx: BudgetCtx, m: string) => {
 
 /** Comprometido del mes: mis mensualidades, lo que debo a personas y mi parte de las mensualidades de la casa. */
 export function monthCommitments(ctx: BudgetCtx, m: string) {
-  const own = ctx.plans.filter(p => p.owner === ctx.me).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
-  const owe = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  const own = ctx.plans.filter(p => p.owner === ctx.me && !p.data.goalId).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  const owe = ctx.ledger.filter(l => l.data.dir === 'owe' && !l.data.goalId).reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
   const casaTotal = ctx.plans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
   const casa = casaTotal * casaPct(ctx, m);
   const advanced = ctx.ledger.filter(l => l.data.dir === 'owed').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
@@ -231,7 +250,7 @@ export function monthSpent(ctx: BudgetCtx, m: string) {
   const linked = new Set(ctx.plans.map(p => p.data.txnId).filter(Boolean) as string[]);
   let own = 0, casa = 0;
   for (const t of ctx.txns) {
-    if (t.data.type !== 'expense' || !t.data.date.startsWith(m)) continue;
+    if (t.data.type !== 'expense' || !t.data.date.startsWith(m) || t.data.payOf || t.data.goalId) continue;
     if (t.owner === ctx.me) {
       if (linked.has(t.id)) continue;
       const led = t.data.ledgerId ? ctx.ledger.find(l => l.id === t.data.ledgerId) : undefined;

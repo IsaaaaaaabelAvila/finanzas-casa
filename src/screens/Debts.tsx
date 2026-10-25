@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addMonthsYm, ledgerStatus, money, monthLabel, ym } from '../calc';
+import { addMonthsYm, ledgerStatus, money, monthLabel, today, ym } from '../calc';
 import { remove, save } from '../store';
 import type { LedgerItem } from '../types';
 import { Bar, Card, Data, Empty, Field, num } from '../ui';
@@ -15,6 +15,11 @@ export default function Debts({ d }: { d: Data }) {
   const [copied, setCopied] = useState(false);
   const [f, setF] = useState({ person: '', concept: '', card: '', kind: 'installments' as LedgerItem['kind'], monthly: '', months: '12', firstMonth: nowM, done: '0', amount: '', settled: '', aside: false });
   const set = (k: keyof typeof f, v: any) => setF(p => ({ ...p, [k]: v }));
+
+  // pago de una deuda: eliges de que cuenta salio el dinero (se registra en Movimientos sin contar como gasto)
+  const accs = d.allAccounts.filter(a => (a.owner === d.me || a.owner === null) && a.data.auto !== 'owe');
+  const [payFor, setPayFor] = useState<null | { id: string; it: LedgerItem; month?: string; amount: string }>(null);
+  const [payAcc, setPayAcc] = useState('');
 
   const items = d.ledger.filter(i => i.data.dir === dir);
   const persons = [...new Set(items.map(i => i.data.person))].sort();
@@ -43,14 +48,32 @@ export default function Debts({ d }: { d: Data }) {
   }
 
   function toggle(id: string, it: LedgerItem, m: string) {
+    const paid = (it.paid ?? []).includes(m);
+    if (dir === 'owe' && !paid) { setPayFor({ id, it, month: m, amount: String(Math.round((it.monthly ?? 0) * 100) / 100) }); return; }
+    if (paid) { const tx = d.allTxns.find(t => t.data.payOf === `${id}:${m}`); if (tx) remove(tx.id); }  // desmarcar borra su movimiento de pago
     const s = new Set(it.paid ?? []);
     if (s.has(m)) s.delete(m); else s.add(m);
     save('ledger', { ...it, paid: [...s].sort() }, d.me, id);
   }
   function settle(id: string, it: LedgerItem) {
-    const v = num(prompt(dir === 'owed' ? 'Monto cobrado (usa negativo para aumentar la deuda)' : 'Monto pagado (usa negativo para aumentar la deuda)') || '0');
+    if (dir === 'owe') { setPayFor({ id, it, amount: '' }); return; }
+    const v = num(prompt('Monto cobrado (usa negativo para aumentar la deuda)') || '0');
     if (!v) return;
     save('ledger', { ...it, settled: Math.max(0, (it.settled ?? 0) + v) }, d.me, id);
+  }
+  function confirmPay(register: boolean) {
+    if (!payFor) return;
+    const { id, it, month: m } = payFor;
+    const acc = payAcc || accs[0]?.id;
+    const v = num(payFor.amount);
+    if (m) {
+      save('ledger', { ...it, paid: [...new Set([...(it.paid ?? []), m])].sort() }, d.me, id);
+      if (register && acc && v > 0) save('txn', { type: 'expense', amount: v, date: today(), accountId: acc, category: 'Pago de deuda', note: `${it.concept} · ${it.person} (${monthLabel(m)})`, payOf: `${id}:${m}` }, d.me);
+    } else if (v > 0) {
+      save('ledger', { ...it, settled: Math.max(0, (it.settled ?? 0) + v) }, d.me, id);
+      if (register && acc) save('txn', { type: 'expense', amount: v, date: today(), accountId: acc, category: 'Pago de deuda', note: `${it.concept} · ${it.person}`, payOf: `${id}:lump:${Date.now()}` }, d.me);
+    }
+    setPayFor(null);
   }
 
   if (stmt) {
@@ -146,6 +169,23 @@ export default function Debts({ d }: { d: Data }) {
         </Card>
       )}
 
+      {payFor && (
+        <Card title="Registrar pago">
+          <p>{payFor.it.concept} · {payFor.it.person}{payFor.month ? ` · ${monthLabel(payFor.month)}` : ''}</p>
+          <Field label="Monto"><input inputMode="decimal" value={payFor.amount} onChange={e => setPayFor({ ...payFor, amount: e.target.value })} /></Field>
+          <Field label="¿De que cuenta salio el dinero?">
+            <select value={payAcc || accs[0]?.id || ''} onChange={e => setPayAcc(e.target.value)}>
+              {accs.map(a => <option key={a.id} value={a.id}>{a.data.name}</option>)}
+            </select>
+          </Field>
+          <div className="row-actions" style={{ justifyContent: 'flex-start', gap: 8 }}>
+            <button className="primary" onClick={() => confirmPay(true)} disabled={!num(payFor.amount)}>Registrar pago</button>
+            <button onClick={() => confirmPay(false)} disabled={!payFor.month && !num(payFor.amount)}>Solo marcar, sin movimiento</button>
+            <button className="link" onClick={() => setPayFor(null)}>Cancelar</button>
+          </div>
+        </Card>
+      )}
+
       {persons.length === 0 && <Card><Empty>No hay deudas en esta lista.</Empty></Card>}
       {persons.map(person => {
         const mine = rows.filter(r => r.i.data.person === person);
@@ -185,6 +225,14 @@ export default function Debts({ d }: { d: Data }) {
                     <small>{money(i.data.settled ?? 0)} de {money(i.data.amount ?? 0)}</small>
                     <div className="row-actions"><button className="link" onClick={() => settle(i.id, i.data)}>{dir === 'owed' ? 'Registrar cobro' : 'Registrar pago'}</button></div>
                   </>
+                )}
+                {dir === 'owe' && d.goals.length > 0 && (
+                  <label className="field" style={{ margin: '8px 0 0' }}><span>Se paga con la meta</span>
+                    <select value={i.data.goalId ?? ''} onChange={e => save('ledger', { ...i.data, goalId: e.target.value || undefined }, d.me, i.id)}>
+                      <option value="">— ninguna (resta de mi libre) —</option>
+                      {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
+                    </select>
+                  </label>
                 )}
                 <div className="row-actions"><button className="link danger" onClick={() => confirm('¿Borrar esta deuda?') && remove(i.id)}>Borrar</button></div>
               </div>

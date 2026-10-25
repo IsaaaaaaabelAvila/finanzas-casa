@@ -23,6 +23,7 @@ export default function Movements({ d }: { d: Data }) {
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
+  const [goalId, setGoalId] = useState('');
   const [filterAcc, setFilterAcc] = useState('');
   // al elegir una cuenta de deudas, el egreso es algo que pago otra persona y yo le debo (aparece en "Yo debo")
   const [owedPerson, setOwedPerson] = useState('Iván');
@@ -57,12 +58,12 @@ export default function Movements({ d }: { d: Data }) {
       if (x.type === 'adjust' && x.accountId === fAcc.id) adj += x.amount;
       if (x.type === 'transfer') { if (x.accountId === fAcc.id) out += x.amount; if (x.toAccountId === fAcc.id) inn += x.amount; }
     }
-    return { inn, out, adj, balance: accountBalance(fAcc, d.allTxns, d.allPlans) };
+    return { inn, out, adj, balance: accountBalance(fAcc, d.allTxns, d.allPlans, d.oweLeft) };
   })() : null;
 
   function resetForm() {
     setEditId(null); setOpen(false); setAmount(''); setNote(''); setCategory(''); setToAccountId(''); setAccountId('');
-    setShared(false); setPayer(''); setDate(today()); setType('expense');
+    setShared(false); setPayer(''); setDate(today()); setType('expense'); setGoalId('');
   }
 
   function startEdit(t: (typeof rows)[number]) {
@@ -70,7 +71,7 @@ export default function Movements({ d }: { d: Data }) {
     setType(t.data.type); setAmount(String(t.data.amount)); setDate(t.data.date);
     setAccountId(t.data.accountId); setToAccountId(t.data.toAccountId ?? '');
     setCategory(t.data.type === 'transfer' || t.data.type === 'adjust' ? '' : t.data.category);
-    setNote(t.data.note); setShared(t.owner === null); setPayer(t.data.paidBy ?? '');
+    setNote(t.data.note); setShared(t.owner === null); setPayer(t.data.paidBy ?? ''); setGoalId(t.data.goalId ?? '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -79,7 +80,7 @@ export default function Movements({ d }: { d: Data }) {
     if (!n || n < 2) return;
     const acc = d.allAccounts.find(a => a.id === t.data.accountId);
     const firstMonth = acc?.data.cutDay && acc.data.payDay ? firstPaymentMonth(t.data.date, acc.data.cutDay, acc.data.payDay) : t.data.date.slice(0, 7);
-    save('plan', { description: t.data.note || t.data.category, total: t.data.amount, months: n, startDate: t.data.date, firstMonth, paid: [], accountId: t.data.accountId, category: t.data.category, paidBy: t.data.paidBy, txnId: t.id }, t.owner);
+    save('plan', { description: t.data.note || t.data.category, total: t.data.amount, months: n, startDate: t.data.date, firstMonth, paid: [], accountId: t.data.accountId, category: t.data.category, paidBy: t.data.paidBy, txnId: t.id, goalId: t.data.goalId }, t.owner);
   }
 
   const planOf = (txnId: string) => d.allPlans.find(p => p.data.txnId === txnId);
@@ -112,7 +113,8 @@ export default function Movements({ d }: { d: Data }) {
       toAccountId: type === 'transfer' ? (toAccountId || accs.find(a => a.id !== acc)?.id) : undefined,
       category: type === 'transfer' ? 'Transferencia' : type === 'adjust' ? 'Ajuste' : (category || cats[cats.length - 1]),
       note: note.trim(),
-      paidBy: shared ? (payer || d.myKey || d.people[0]?.key || d.me) : undefined
+      paidBy: shared ? (payer || d.myKey || d.people[0]?.key || d.me) : undefined,
+      goalId: type === 'expense' && goalId ? goalId : undefined
     };
     save('txn', t, shared ? null : d.me, editId ?? undefined);
     const linked = editId ? planOf(editId) : undefined;
@@ -176,6 +178,14 @@ export default function Movements({ d }: { d: Data }) {
             <Field label="Categoria">
               <select value={category || cats[cats.length - 1]} onChange={e => setCategory(e.target.value)}>
                 {cats.map(c => <option key={c}>{c}</option>)}
+              </select>
+            </Field>
+          )}
+          {type === 'expense' && !shared && d.goals.length > 0 && (
+            <Field label="Pagar con la meta (no resta de tu libre del mes)">
+              <select value={goalId} onChange={e => setGoalId(e.target.value)}>
+                <option value="">— ninguna —</option>
+                {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
               </select>
             </Field>
           )}
