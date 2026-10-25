@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { allocateGoals, goalPlan, money } from '../calc';
+import { allocateGoals, goalPlan, goalSaved, money } from '../calc';
 import { remove, save } from '../store';
 import type { Goal } from '../types';
 import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
 
-const EMPTY = { name: '', target: '', saved: '', deadline: '', link: true, shared: false };
+const EMPTY = { name: '', target: '', saved: '', deadline: '', link: true, shared: false, kind: 'spend' as 'fund' | 'spend' };
 
 export default function Goals({ d }: { d: Data }) {
   const [open, setOpen] = useState(false);
@@ -14,7 +14,7 @@ export default function Goals({ d }: { d: Data }) {
 
   const sorted = [...d.goals].sort((a, b) => (a.data.order ?? 1e9) - (b.data.order ?? 1e9));
   const al = allocateGoals(d.goals, d.total, d.goalCommitted);
-  const progress = (g: (typeof d.goals)[number]) => Math.min(g.data.target, (al.alloc[g.id] ?? 0) + (d.goalCommitted[g.id] ?? 0));
+  const progress = (g: (typeof d.goals)[number]) => goalSaved(g, al.alloc, d.goalCommitted);
   const targetSum = al.linked.reduce((a, g) => a + g.data.target, 0);
   const allocSum = al.linked.reduce((a, g) => a + progress(g), 0);
 
@@ -22,7 +22,7 @@ export default function Goals({ d }: { d: Data }) {
 
   function startEdit(id: string) {
     const g = d.goals.find(x => x.id === id)!;
-    setF({ name: g.data.name, target: String(g.data.target), saved: String(g.data.saved), deadline: g.data.deadline ?? '', link: Boolean(g.data.linkTotal), shared: g.owner === null });
+    setF({ name: g.data.name, target: String(g.data.target), saved: String(g.data.saved), deadline: g.data.deadline ?? '', link: Boolean(g.data.linkTotal), shared: g.owner === null, kind: g.data.kind ?? 'spend' });
     setEditId(id); setOpen(true);
   }
 
@@ -30,7 +30,7 @@ export default function Goals({ d }: { d: Data }) {
     if (!f.name.trim() || !num(f.target)) return;
     const prev = editId ? d.goals.find(x => x.id === editId) : undefined;
     const nextOrder = prev?.data.order ?? (Math.max(0, ...d.goals.map(g => g.data.order ?? 0)) + 1);
-    const goal: Goal = { name: f.name.trim(), target: num(f.target), saved: num(f.saved), deadline: f.deadline || undefined, linkTotal: f.link || undefined, order: nextOrder };
+    const goal: Goal = { name: f.name.trim(), target: num(f.target), saved: num(f.saved), deadline: f.deadline || undefined, linkTotal: f.link || undefined, order: nextOrder, kind: f.kind };
     save('goal', goal, f.shared ? null : d.me, editId ?? undefined);
     reset();
   }
@@ -56,6 +56,12 @@ export default function Goals({ d }: { d: Data }) {
     <Card title={editId ? 'Editar meta' : 'Nueva meta'}>
       <Field label="Nombre"><input value={f.name} onChange={e => set('name', e.target.value)} placeholder="Fondo de emergencia, viaje…" /></Field>
       <Field label="Monto objetivo"><input inputMode="decimal" value={f.target} onChange={e => set('target', e.target.value)} /></Field>
+      <Field label="Tipo de meta">
+        <select value={f.kind} onChange={e => set('kind', e.target.value as 'fund' | 'spend')}>
+          <option value="spend">Meta que se gasta (ej. viaje): al gastarla se cierra y empiezas de nuevo</option>
+          <option value="fund">Fondo que se repone (ej. emergencia): si lo usas, lo repones</option>
+        </select>
+      </Field>
       <label className="check"><input type="checkbox" checked={f.link} onChange={e => set('link', e.target.checked)} /> Se llena con mi dinero total (por orden de prioridad)</label>
       {!f.link && <Field label="Ya llevas ahorrado"><input inputMode="decimal" value={f.saved} onChange={e => set('saved', e.target.value)} /></Field>}
       <Field label="Fecha limite (opcional)"><input type="date" value={f.deadline} onChange={e => set('deadline', e.target.value)} /></Field>
@@ -97,12 +103,13 @@ export default function Goals({ d }: { d: Data }) {
             </div>
             <Bar pct={p.pct} tone={p.pct >= 100 ? 'good' : 'warn'} />
             <div className="row"><span>{money(savedNow)} de {money(g.data.target)}</span><b>{p.pct.toFixed(0)}%</b></div>
-            {(d.goalCommitted[g.id] ?? 0) > 0 && <small>Ya comprometido en esta meta: {money(d.goalCommitted[g.id])} · ahorrado: {money(al.alloc[g.id] ?? 0)}</small>}
+            {(d.goalCommitted[g.id] ?? 0) > 0 && (g.data.kind === 'fund' ? <small>Pagado con este fondo: {money(d.goalCommitted[g.id])} (hay que reponerlo)</small> : <small>Ya comprometido en esta meta: {money(d.goalCommitted[g.id])} · ahorrado: {money(al.alloc[g.id] ?? 0)}</small>)}
             <small>
               {p.left === 0 ? '¡Meta completa!' : <>Te faltan <b>{money(p.left)}</b>{p.perMonth !== null && <> · {p.monthsLeft} meses → <b>{money(p.perMonth)}/mes</b></>}</>}
             </small>
             <div className="row-actions">
               {!g.data.linkTotal && <button className="link" onClick={() => contribute(g.id)}>Abonar</button>}
+              {g.data.kind !== 'fund' && g.data.linkTotal && <button className="link" onClick={() => confirm('¿Ya la gastaste? Se cierra y dejas de verla; lo que pagaste con ella sigue sin restar de tu libre.') && save('goal', { ...g.data, closed: true }, g.owner, g.id)}>Cerrar meta (ya la gaste)</button>}
               <button className="link" onClick={() => startEdit(g.id)}>Editar</button>
               <button className="link danger" onClick={() => confirm('¿Borrar meta?') && remove(g.id)}>Borrar</button>
             </div>

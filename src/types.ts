@@ -46,6 +46,8 @@ export interface Goal {
   deadline?: string;
   linkTotal?: boolean;  // se llena con el dinero total, por orden de prioridad
   order?: number;       // prioridad (1 = primero)
+  kind?: 'fund' | 'spend';  // fund: fondo que se repone siempre; spend: meta que se gasta y se cierra
+  closed?: boolean;     // meta de gasto ya gastada (oculta; sus compras siguen pagadas con ella)
 }
 export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle' | 'ledger' | 'status';
 export interface Rec<T = any> {

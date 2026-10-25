@@ -19,6 +19,7 @@ function PlansList({ d }: { d: Data }) {
   const [accountId, setAccountId] = useState('');
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
+  const [goalId, setGoalId] = useState('');
 
   const cards = d.allAccounts.filter(a => a.data.type === 'credit' && (a.owner === d.me || a.owner === null));
   const accName = (id?: string) => d.allAccounts.find(a => a.id === id)?.data.name;
@@ -37,7 +38,7 @@ function PlansList({ d }: { d: Data }) {
     if (!desc.trim() || !num(total)) return;
     const plan: Plan = {
       description: desc.trim(), total: num(total), months: Math.max(1, Math.round(num(months))),
-      startDate: start, firstMonth, paid: [], category,
+      startDate: start, firstMonth, paid: [], category, goalId: goalId || undefined,
       accountId: accountId || (shared ? undefined : cards[0]?.id) || undefined,
       paidBy: shared ? (payer || d.myKey || d.people[0]?.key) : undefined
     };
@@ -76,6 +77,18 @@ function PlansList({ d }: { d: Data }) {
           <Field label="Mes de la primera mensualidad"><input type="month" value={firstMonth} onChange={e => { setFirst(e.target.value); setFirstTouched(true); }} /></Field>
           {auto && !firstTouched && chosen && <p className="hint">Calculado con el corte (dia {chosen.data.cutDay}) y el pago (dia {chosen.data.payDay}) de {chosen.data.name}: la compra del {start} entra al corte de ese mes y se paga en {monthLabel(auto)}.</p>}
           <Field label="Categoria"><select value={category} onChange={e => setCategory(e.target.value)}>{EXPENSE_CATS.map(c => <option key={c}>{c}</option>)}</select></Field>
+          {d.goals.length > 0 && !shared && (
+            <>
+              <label className="check"><input type="checkbox" checked={goalId !== ''} onChange={e => setGoalId(e.target.checked ? d.goals[0].id : '')} /> Pagar con una meta (las mensualidades no restan de mi libre)</label>
+              {goalId !== '' && (
+                <Field label="Meta">
+                  <select value={goalId} onChange={e => setGoalId(e.target.value)}>
+                    {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
+                  </select>
+                </Field>
+              )}
+            </>
+          )}
           <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Compra comun de la casa</label>
           {shared && d.people.length > 0 && (
             <Field label="Quien la paga">
@@ -107,13 +120,8 @@ function PlansList({ d }: { d: Data }) {
               );
             })}
           </div>
-          {p.owner === d.me && d.goals.length > 0 && (
-            <label className="field" style={{ margin: '8px 0 0' }}><span>Se paga con la meta</span>
-              <select value={p.data.goalId ?? ''} onChange={e => save('plan', { ...p.data, goalId: e.target.value || undefined }, p.owner, p.id)}>
-                <option value="">— ninguna (resta de mi libre) —</option>
-                {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
-              </select>
-            </label>
+          {p.data.goalId && (
+            <small>Se paga con la meta {d.allGoals.find(g => g.id === p.data.goalId)?.data.name ?? '—'} · <button className="link" style={{ padding: 0 }} onClick={() => save('plan', { ...p.data, goalId: undefined }, p.owner, p.id)}>Quitar</button></small>
           )}
           <div className="row-actions"><button className="link danger" onClick={() => confirm('¿Borrar?') && remove(p.id)}>Borrar</button></div>
         </Card>

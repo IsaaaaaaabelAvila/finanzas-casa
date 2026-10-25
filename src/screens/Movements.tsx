@@ -75,12 +75,17 @@ export default function Movements({ d }: { d: Data }) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function toPlan(t: (typeof rows)[number]) {
-    const n = parseInt(prompt('¿A cuantos meses?') ?? '', 10);
-    if (!n || n < 2) return;
+  const [toM, setToM] = useState<null | { id: string; months: string; goalId: string }>(null);
+  function toPlan(t: (typeof rows)[number]) { setToM({ id: t.id, months: '', goalId: t.data.goalId ?? '' }); }
+  function finishToPlan() {
+    if (!toM) return;
+    const t = rows.find(x => x.id === toM.id);
+    const n = parseInt(toM.months, 10);
+    if (!t || !n || n < 2) return;
     const acc = d.allAccounts.find(a => a.id === t.data.accountId);
     const firstMonth = acc?.data.cutDay && acc.data.payDay ? firstPaymentMonth(t.data.date, acc.data.cutDay, acc.data.payDay) : t.data.date.slice(0, 7);
-    save('plan', { description: t.data.note || t.data.category, total: t.data.amount, months: n, startDate: t.data.date, firstMonth, paid: [], accountId: t.data.accountId, category: t.data.category, paidBy: t.data.paidBy, txnId: t.id, goalId: t.data.goalId }, t.owner);
+    save('plan', { description: t.data.note || t.data.category, total: t.data.amount, months: n, startDate: t.data.date, firstMonth, paid: [], accountId: t.data.accountId, category: t.data.category, paidBy: t.data.paidBy, txnId: t.id, goalId: toM.goalId || undefined }, t.owner);
+    setToM(null);
   }
 
   const planOf = (txnId: string) => d.allPlans.find(p => p.data.txnId === txnId);
@@ -130,6 +135,25 @@ export default function Movements({ d }: { d: Data }) {
         <button onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
         <button className="primary" onClick={() => (open ? resetForm() : setOpen(true))}>{open ? 'Cerrar' : '+ Nuevo'}</button>
       </div>
+
+      {toM && (
+        <Card title="Pasar este gasto a meses">
+          <Field label="¿A cuantos meses?"><input inputMode="numeric" value={toM.months} onChange={e => setToM({ ...toM, months: e.target.value })} placeholder="12" /></Field>
+          {d.goals.length > 0 && (
+            <>
+              <label className="check"><input type="checkbox" checked={toM.goalId !== ''} onChange={e => setToM({ ...toM, goalId: e.target.checked ? d.goals[0].id : '' })} /> Pagar con una meta (las mensualidades no restan de mi libre)</label>
+              {toM.goalId !== '' && (
+                <Field label="Meta">
+                  <select value={toM.goalId} onChange={e => setToM({ ...toM, goalId: e.target.value })}>
+                    {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
+                  </select>
+                </Field>
+              )}
+            </>
+          )}
+          <div className="row-actions" style={{ justifyContent: 'flex-start', gap: 8 }}><button className="primary" onClick={finishToPlan} disabled={!(parseInt(toM.months, 10) >= 2)}>Pasar a meses</button><button onClick={() => setToM(null)}>Cancelar</button></div>
+        </Card>
+      )}
 
       <div className="filterbar">
         <select value={filterAcc} onChange={e => setFilterAcc(e.target.value)}>
@@ -182,12 +206,16 @@ export default function Movements({ d }: { d: Data }) {
             </Field>
           )}
           {type === 'expense' && !shared && d.goals.length > 0 && (
-            <Field label="Pagar con la meta (no resta de tu libre del mes)">
-              <select value={goalId} onChange={e => setGoalId(e.target.value)}>
-                <option value="">— ninguna —</option>
-                {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
-              </select>
-            </Field>
+            <>
+              <label className="check"><input type="checkbox" checked={goalId !== ''} onChange={e => setGoalId(e.target.checked ? d.goals[0].id : '')} /> Pagar con una meta (no resta de mi libre del mes)</label>
+              {goalId !== '' && (
+                <Field label="Meta">
+                  <select value={goalId} onChange={e => setGoalId(e.target.value)}>
+                    {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
+                  </select>
+                </Field>
+              )}
+            </>
           )}
           {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && <p className="hint">Esta nomina se refleja sola en Casa para calcular el porcentaje (solo se comparte el total del mes).</p>}
           {useOwed && (

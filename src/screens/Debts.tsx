@@ -13,6 +13,7 @@ export default function Debts({ d }: { d: Data }) {
   const [open, setOpen] = useState(false);
   const [stmt, setStmt] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [goalId, setGoalId] = useState('');
   const [f, setF] = useState({ person: '', concept: '', card: '', kind: 'installments' as LedgerItem['kind'], monthly: '', months: '12', firstMonth: nowM, done: '0', amount: '', settled: '', aside: false });
   const set = (k: keyof typeof f, v: any) => setF(p => ({ ...p, [k]: v }));
 
@@ -35,7 +36,7 @@ export default function Debts({ d }: { d: Data }) {
 
   function submit() {
     if (!f.person.trim() || !f.concept.trim()) return;
-    const base = { person: f.person.trim(), dir, concept: f.concept.trim(), card: f.card.trim() || undefined, kind: f.kind } as LedgerItem;
+    const base = { person: f.person.trim(), dir, concept: f.concept.trim(), card: f.card.trim() || undefined, kind: f.kind, goalId: dir === 'owe' && goalId ? goalId : undefined } as LedgerItem;
     if (f.kind === 'installments') {
       const months = Math.max(1, Math.round(num(f.months)));
       const done = Math.min(months, Math.max(0, Math.round(num(f.done))));
@@ -165,6 +166,18 @@ export default function Debts({ d }: { d: Data }) {
               <label className="check"><input type="checkbox" checked={f.aside} onChange={e => set('aside', e.target.checked)} /> Deuda aparte (antigua; no entra en lo que cobro activamente)</label>
             </>
           )}
+          {dir === 'owe' && d.goals.length > 0 && (
+            <>
+              <label className="check"><input type="checkbox" checked={goalId !== ''} onChange={e => setGoalId(e.target.checked ? d.goals[0].id : '')} /> Pagar con una meta (no resta de mi libre)</label>
+              {goalId !== '' && (
+                <Field label="Meta">
+                  <select value={goalId} onChange={e => setGoalId(e.target.value)}>
+                    {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
+                  </select>
+                </Field>
+              )}
+            </>
+          )}
           <button className="primary" onClick={submit}>Guardar</button>
         </Card>
       )}
@@ -226,13 +239,8 @@ export default function Debts({ d }: { d: Data }) {
                     <div className="row-actions"><button className="link" onClick={() => settle(i.id, i.data)}>{dir === 'owed' ? 'Registrar cobro' : 'Registrar pago'}</button></div>
                   </>
                 )}
-                {dir === 'owe' && d.goals.length > 0 && (
-                  <label className="field" style={{ margin: '8px 0 0' }}><span>Se paga con la meta</span>
-                    <select value={i.data.goalId ?? ''} onChange={e => save('ledger', { ...i.data, goalId: e.target.value || undefined }, d.me, i.id)}>
-                      <option value="">— ninguna (resta de mi libre) —</option>
-                      {d.goals.map(g => <option key={g.id} value={g.id}>{g.data.name}</option>)}
-                    </select>
-                  </label>
+                {dir === 'owe' && i.data.goalId && (
+                  <small>Se paga con la meta {d.allGoals.find(g => g.id === i.data.goalId)?.data.name ?? '—'} · <button className="link" style={{ padding: 0 }} onClick={() => save('ledger', { ...i.data, goalId: undefined }, d.me, i.id)}>Quitar</button></small>
                 )}
                 <div className="row-actions"><button className="link danger" onClick={() => confirm('¿Borrar esta deuda?') && remove(i.id)}>Borrar</button></div>
               </div>

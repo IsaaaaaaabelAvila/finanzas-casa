@@ -11,6 +11,7 @@ export interface Data {
   txns: Item<Txn>[];
   plans: Item<Plan>[];
   goals: Item<Goal>[];
+  allGoals: Item<Goal>[];
   allAccounts: Item<Account>[];
   allTxns: Item<Txn>[];
   allPlans: Item<Plan>[];
@@ -52,7 +53,8 @@ export function selectData(s: State, scope: Scope): Data {
     accounts: allAccounts.filter(a => ok(a.owner)),
     txns: allTxns.filter(t => ok(t.owner)),
     plans: allPlans.filter(p => ok(p.owner)),
-    goals: list<Goal>(s, 'goal').filter(g => ok(g.owner))
+    goals: list<Goal>(s, 'goal').filter(g => ok(g.owner) && !g.data.closed),
+    allGoals: list<Goal>(s, 'goal')
   };
 }
 

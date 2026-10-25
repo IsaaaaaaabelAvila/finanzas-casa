@@ -199,7 +199,7 @@ export function allocateGoals(goals: Item<Goal>[], total: number, committed: Rec
   let rest = Math.max(0, total);
   const alloc: Record<string, number> = {};
   for (const g of linked) {
-    const room = Math.max(0, g.data.target - (committed[g.id] ?? 0)); // lo ya comprometido en la meta cuenta dentro de su presupuesto
+    const room = Math.max(0, g.data.target - (g.data.kind === 'fund' ? 0 : (committed[g.id] ?? 0))); // en metas de gasto, lo comprometido cuenta dentro de su presupuesto
     const a = Math.min(room, rest);
     alloc[g.id] = a; rest -= a;
   }
@@ -315,3 +315,7 @@ export function budgetLevel(b: { base: number; carry: number; commit: number; sp
   return 'green';
 }
 export const levelText = (l: Level) => l === 'green' ? 'Va bien este mes' : l === 'amber' ? 'Va por encima del ritmo del mes' : 'Ya no queda para gastar este mes';
+
+/** Lo ahorrado en una meta: lo asignado de tu dinero total (+ lo ya comprometido si es una meta de gasto). */
+export const goalSaved = (g: Item<Goal>, alloc: Record<string, number>, committed: Record<string, number>) =>
+  g.data.linkTotal ? Math.min(g.data.target, (alloc[g.id] ?? 0) + (g.data.kind === 'fund' ? 0 : (committed[g.id] ?? 0))) : g.data.saved;

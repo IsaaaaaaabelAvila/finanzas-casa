@@ -1,5 +1,5 @@
 import { Tab } from '../App';
-import { allocateGoals, goalPlan, minSpend, money, planStatus, spendCap, ym, today } from '../calc';
+import { allocateGoals, goalPlan, goalSaved, minSpend, money, planStatus, spendCap, ym, today } from '../calc';
 import { Bar, Card, Data, Empty, Scope } from '../ui';
 import FreeCard, { PartnerMarker } from './FreeCard';
 
@@ -89,7 +89,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
 
       {!house && <Card title="Metas" right={<button className="link" onClick={() => go('goals')}>Ver</button>}>
         {d.goals.length === 0 ? <Empty>Aun no tienes metas.</Empty> : d.goals.slice(0, 3).map(g => {
-          const p = goalPlan(g.data.target, g.data.linkTotal ? (goalAlloc.alloc[g.id] ?? 0) + (d.goalCommitted[g.id] ?? 0) : g.data.saved, g.data.deadline, now);
+          const p = goalPlan(g.data.target, goalSaved(g, goalAlloc.alloc, d.goalCommitted), g.data.deadline, now);
           return (
             <div key={g.id} className="row-block">
               <div className="row"><b>{g.data.name}</b><span>{p.pct.toFixed(0)}%</span></div>
