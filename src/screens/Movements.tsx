@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { accountBalance, addMonthsYm, firstPaymentMonth, money, planStatus, today, ym } from '../calc';
+import { accountBalance, addMonthsYm, firstPaymentMonth, ledgerStatus, money, monthLabel, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, INCOME_CATS, Txn, TxnType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -24,6 +24,7 @@ export default function Movements({ d }: { d: Data }) {
   const [payer, setPayer] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
   const [goalId, setGoalId] = useState('');
+  const [markPlans, setMarkPlans] = useState(true);
   const [filterAcc, setFilterAcc] = useState('');
   // al elegir una cuenta de deudas, el egreso es algo que pago otra persona y yo le debo (aparece en "Yo debo")
   const [owedPerson, setOwedPerson] = useState('Iván');
@@ -122,10 +123,23 @@ export default function Movements({ d }: { d: Data }) {
       goalId: type === 'expense' && goalId ? goalId : undefined
     };
     save('txn', t, shared ? null : d.me, editId ?? undefined);
+    if (!editId && payInfo && markPlans) for (const x of payInfo.plansDue) save('plan', { ...x.p.data, paid: [...new Set([...(x.p.data.paid ?? []), payMonth])].sort() }, x.p.owner, x.p.id);
     const linked = editId ? planOf(editId) : undefined;
     if (linked) save('plan', { ...linked.data, total: amt, startDate: date, description: t.note || t.category, category: t.category, accountId: acc }, linked.owner, linked.id);
     resetForm();
   }
+
+  // pago de tarjeta: que parte son mensualidades de este mes y cual es el resto (lo calcula la app)
+  const payTo = type === 'transfer' && !editId ? d.allAccounts.find(a => a.id === toAccountId) : undefined;
+  const payMonth = date.slice(0, 7);
+  const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const payInfo = payTo && payTo.data.type === 'credit' ? (() => {
+    const plansDue = d.allPlans.filter(p => (p.data.cardId ?? p.data.accountId) === payTo.id).map(p => ({ p, st: planStatus(p.data, payMonth) })).filter(x => x.st.due && !x.st.paidThisMonth);
+    const others = d.ledger.filter(l => l.data.dir === 'owed' && l.data.card && norm(l.data.card) === norm(payTo.data.name)).map(l => ({ l, st: ledgerStatus(l.data, payMonth) })).filter(x => x.st.due);
+    const sumPlans = plansDue.reduce((a, x) => a + x.st.monthly, 0);
+    const sumOthers = others.reduce((a, x) => a + x.st.monthly, 0);
+    return { plansDue, others, sumPlans, sumOthers };
+  })() : null;
 
   return (
     <>
@@ -197,6 +211,17 @@ export default function Movements({ d }: { d: Data }) {
                 {accs.map(a => <option key={a.id} value={a.id}>{a.data.name}</option>)}
               </select>
             </Field>
+          )}
+          {payInfo && (payInfo.plansDue.length + payInfo.others.length) > 0 && (
+            <div className="settle">
+              <small>MENSUALIDADES DE {monthLabel(payMonth).toUpperCase()} EN {payTo!.data.name.toUpperCase()}</small>
+              {payInfo.plansDue.map(x => <div key={x.p.id} className="row"><small>{x.p.data.description}</small><span>{money(x.st.monthly)}</span></div>)}
+              {payInfo.others.map(x => <div key={x.l.id} className="row"><small>{x.l.data.concept} ({x.l.data.person}; te lo deben)</small><span>{money(x.st.monthly)}</span></div>)}
+              <div className="row"><small>Total de mensualidades</small><b>{money(payInfo.sumPlans + payInfo.sumOthers)}</b></div>
+              {num(amount) > 0 && <div className="row"><small>El resto del pago (gastos normales)</small><b>{money(num(amount) - payInfo.sumPlans - payInfo.sumOthers)}</b></div>}
+              {num(amount) > 0 && num(amount) < payInfo.sumPlans + payInfo.sumOthers - 0.5 && <p className="error">El pago es menor que las mensualidades; revisa el monto.</p>}
+              {payInfo.plansDue.length > 0 && <label className="check"><input type="checkbox" checked={markPlans} onChange={e => setMarkPlans(e.target.checked)} /> Marcar mis mensualidades como pagadas</label>}
+            </div>
           )}
           {type !== 'transfer' && type !== 'adjust' && (
             <Field label="Categoria">

@@ -38,6 +38,7 @@ export interface Plan {
   category?: string;    // categoria del gasto
   txnId?: string;       // movimiento del que viene (ya cuenta como gasto; la compra no se suma otra vez)
   goalId?: string;      // se paga con el dinero de esta meta; no resta del libre
+  cardId?: string;      // tarjeta de la compra, solo para marcar mensualidades al pagarla (no afecta el saldo)
 }
 export interface Goal {
   name: string;

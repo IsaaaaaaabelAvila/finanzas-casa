@@ -120,6 +120,18 @@ function PlansList({ d }: { d: Data }) {
               );
             })}
           </div>
+          {(p.owner === d.me || (p.owner === null && p.data.paidBy === d.myKey)) && cards.length > 0 && (
+            (p.data.cardId ?? p.data.accountId)
+              ? <small>Tarjeta: {accName(p.data.cardId ?? p.data.accountId) ?? '—'}{p.data.cardId && <> · <button className="link" style={{ padding: 0 }} onClick={() => save('plan', { ...p.data, cardId: undefined }, p.owner, p.id)}>Cambiar</button></>}</small>
+              : (
+                <label className="field" style={{ margin: '8px 0 0' }}><span>¿De que tarjeta es? (asi se marcan solas al pagar la tarjeta)</span>
+                  <select value="" onChange={e => e.target.value && save('plan', { ...p.data, cardId: e.target.value }, p.owner, p.id)}>
+                    <option value="">— elegir tarjeta —</option>
+                    {cards.map(a => <option key={a.id} value={a.id}>{a.data.name}</option>)}
+                  </select>
+                </label>
+              )
+          )}
           {p.data.goalId && (
             <small>Se paga con la meta {d.allGoals.find(g => g.id === p.data.goalId)?.data.name ?? '—'} · <button className="link" style={{ padding: 0 }} onClick={() => save('plan', { ...p.data, goalId: undefined }, p.owner, p.id)}>Quitar</button></small>
           )}
