@@ -48,11 +48,12 @@ export function selectData(s: State, scope: Scope): Data {
   const extra = 0; // el dinero total descuenta toda la deuda; lo que te deben queda fuera
   const oweLeft = oweRemaining(ledger);
   const bagmoves = list<BagMove>(s, 'bagmove').filter(m => m.owner === me);
-  const pat = patrimonio(allAccounts, { me, myKey, txns: allTxns, plans: allPlans, ledger, people, payrolls: list<Payroll>(s, 'payroll'), setting: setting?.data ?? null }, allTxns, allPlans, oweLeft);
+  const bctx = { me, myKey, txns: allTxns, plans: allPlans, ledger, people, payrolls: list<Payroll>(s, 'payroll'), setting: setting?.data ?? null };
+  const pat = patrimonio(allAccounts, bctx, allTxns, allPlans, oweLeft);
   return {
     people, peopleId: peopleRec?.id ?? null,
     ledger, myKey, extra, oweLeft, goalCommitted: goalCommitted(me, ledger, allPlans, allTxns),
-    bagmoves, goalSpent: goalSpent(bagmoves, me), pat, bags: bagState(allAccounts, allTxns, allPlans, bagmoves, setting?.data ?? null, me, oweLeft, pat.a), statuses: list<Status>(s, 'status'),
+    bagmoves, goalSpent: goalSpent(bagmoves, me), pat, bags: bagState(allAccounts, allTxns, allPlans, bagmoves, setting?.data ?? null, me, oweLeft, bctx, pat), statuses: list<Status>(s, 'status'),
     payrolls: list<Payroll>(s, 'payroll'), settles: list<Settle>(s, 'settle'),
     me, allAccounts, allTxns, allPlans,
     total: totalFunds(allAccounts, allTxns, allPlans, oweLeft).total + extra,

@@ -21,12 +21,24 @@ export default function BagsCard({ d }: { d: Data }) {
   return (
     <Card title="Bolsas">
       {!b.started && <small>EL ESQUEMA ARRANCA EL {b.from} · ASI SE VERIA HOY</small>}
-      <div className="row" style={{ marginTop: 6 }}><span>Bolsa de gasto</span><b>{money(b.gasto)}</b></div>
-      <div className="row"><span>Bolsa de ahorro</span><b>{money(b.ahorro)}</b></div>
-      <div className="row"><small>Patrimonio (gasto + ahorro)</small><small className={b.patrimonio < 0 ? 'neg' : ''}>{money(b.patrimonio)}</small></div>
-      <div className="row"><small>Dinero en cuentas</small><small>{money(b.cash)}</small></div>
-      <div className="row"><small>De ese dinero, respalda lo que debes</small><small>{money(b.respaldo)}</small></div>
-      {b.capped && <small>El ahorro no puede superar tu patrimonio: lo que falta se repone con tus siguientes ingresos.</small>}
+      <div className="row" style={{ marginTop: 6 }}><span>Libre para gastar</span><b className={b.libre < 0 ? 'neg' : 'pos'}>{money(b.libre)}</b></div>
+      <div className="row"><span>Ahorro real</span><b>{money(b.ahorro)}</b></div>
+      <div className="row"><span>Deuda comprometida</span><b>{money(b.comprometida)}</b></div>
+      {b.sinCobertura > 0.5 && <div className="row"><span>Deuda sin cobertura</span><b className="neg">{money(b.sinCobertura)}</b></div>}
+      <div className="row"><span>Patrimonio</span><b className={d.pat.a < 0 ? 'neg' : ''}>{money(d.pat.a)} <small>/ con por cobrar {money(d.pat.b)}</small></b></div>
+      <div className="row" style={{ marginTop: 10 }}><span>Bolsa de gasto</span><b>{money(b.gastoBag)}</b></div>
+      <div className="row"><small>Comprometido en deuda inmediata</small><small>{money(b.D1)}</small></div>
+      {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><small>{money(b.A)}</small></div>}
+      <div className="row"><small>Libre</small><small>{money(b.libre)}</small></div>
+      <div className="row" style={{ marginTop: 6 }}><span>Bolsa de ahorro</span><b>{money(b.ahorroBag)}</b></div>
+      <div className="row"><small>Comprometido a deuda</small><small>{money(b.B2)}</small></div>
+      {b.DM > 0.5 && <div className="row"><small>Deuda financiada por metas</small><small>{money(b.DM)}</small></div>}
+      <div className="row"><small>Ahorro real</small><small>{money(b.ahorro)}</small></div>
+      {!b.fixed && d.setting && (
+        <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
+          <button className="link" onClick={() => confirm(`Fijar el arranque: bolsa de ahorro inicial de ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(b.libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
+        </div>
+      )}
       <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
         <button className="link" onClick={() => setOpen(!open)}>Mover entre bolsas</button>
       </div>

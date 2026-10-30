@@ -31,7 +31,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const reminderDay = [5, 6, 0, 1].includes(wd);
   const loggedToday = d.allTxns.some(t => t.owner === d.me && t.data.date === today());
 
-  const goalSpentMap = d.bags ? d.goalSpent : d.goalCommitted;
+  const goalSpentMap = d.bags ? d.bags.goalHeld : d.goalCommitted;
   const goalAlloc = allocateGoals(d.goals, d.bags ? d.bags.ahorro : d.total, goalSpentMap);
   const budget = d.setting?.data.monthlyBudget ?? 0;
   const hasPlan = (d.setting?.data.plan?.length ?? 0) > 0;
@@ -55,7 +55,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
       </div>
 
       {!house && d.bags && <BagsCard d={d} />}
-      {!house && hasPlan && <FreeCard d={d} />}
+      {!house && hasPlan && !d.bags && <FreeCard d={d} />}
       {!house && <PartnerMarker d={d} />}
 
       {!house && !hasPlan && budget > 0 && (

@@ -366,21 +366,85 @@ export function incomeToSavings(st: Setting | null, t: Txn) {
 }
 
 /**
- * Las dos bolsas. El ahorro "nominal" arranca en el monto elegido (o el patrimonio menos el gasto inicial) y crece con cada ingreso;
- * pero el ahorro real nunca supera el patrimonio base (a), y el gasto es lo que queda del patrimonio. Asi gasto + ahorro = patrimonio.
- * Lo que sobra del dinero en cuentas es el respaldo de las deudas.
+ * Deuda por capas. Capa 1: lo que vence en lo que resta del periodo (mes o quincena), siempre sale de la bolsa de gasto.
+ * Capa 2: el resto de la deuda propia y por pagar. DM: deuda financiada por metas. A: parte ajena de mensualidades aun no reembolsada.
  */
-export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[], moves: Item<BagMove>[], st: Setting | null, me: string, oweLeft: number, a: number) {
+export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: BudgetCtx, pat: { deudaPropia: number; porPagar: number }, ref: string, mode: 'month' | 'quincena' | undefined, oweLeft: number) {
+  const m = ref.slice(0, 7);
+  const end = mode === 'quincena' && Number(ref.slice(8, 10)) <= 15 ? 15 : 31;
+  const pct = casaPct(ctx, m);
+  const accById = new Map(accs.map(x => [x.id, x]));
+  const dueDay = (id?: string) => accById.get(id ?? '')?.data.payDay ?? 1;
+  let D1 = 0, A = 0, DM = 0;
+  const DMby: Record<string, number> = {};
+  const addDM = (id: string, v: number) => { DM += v; DMby[id] = (DMby[id] ?? 0) + v; };
+  const planRem: Record<string, number> = {};
+  for (const p of plans) {
+    const mine = p.owner === ctx.me;
+    if (!mine && p.owner !== null) continue;
+    const st = planStatus(p.data, m);
+    const cid = p.data.cardId ?? p.data.accountId;
+    const titular = mine || p.data.paidBy === ctx.myKey;
+    if (titular && cid) planRem[cid] = (planRem[cid] ?? 0) + st.remainingAmount;
+    if (mine && p.data.goalId) { addDM(p.data.goalId, st.remainingAmount); continue; }
+    if (!st.due || st.paidThisMonth || dueDay(cid) > end) continue;
+    if (mine) D1 += st.monthly;
+    else { D1 += st.monthly * pct; if (p.data.paidBy === ctx.myKey) A += st.monthly * (1 - pct); }
+  }
+  let ajenaLeft = 0;
+  for (const l of ctx.ledger) {
+    const st = ledgerStatus(l.data, m);
+    if (l.data.dir === 'owe') {
+      if (l.data.goalId) { addDM(l.data.goalId, st.left); continue; }
+      if (l.data.kind === 'installments' && st.due && !st.paidThisMonth) D1 += st.monthly;
+    } else if (l.data.kind === 'installments' && !l.data.dudoso) {
+      ajenaLeft += st.left;
+      if (st.due && !st.paidThisMonth) A += st.monthly;
+    }
+  }
+  return { D1, A, DM, DMby, planRem, end, pct, ajenaLeft, ref };
+}
+
+/**
+ * Las dos bolsas. S es el total de la bolsa de ahorro: arranca en el monto fijado, sube con la parte de cada ingreso que se ahorra y con los movimientos.
+ * Lo que ya esta comprometido a deuda sale de S (capa 2 respaldada de forma gradual segun el patrimonio, y deuda de metas completa).
+ * Gasto = dinero en cuentas - S. Libre = gasto - capa 1 - otros pagos - parte ajena.
+ */
+export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[], moves: Item<BagMove>[], st: Setting | null, me: string, oweLeft: number, ctx: BudgetCtx, pat: ReturnType<typeof patrimonio>) {
   const start = st?.bagStart;
   if (!start) return null;
-  const ahorroStart = start.ahorro != null ? start.ahorro : a - (start.gasto ?? 0);
-  let nominal = ahorroStart;
-  for (const t of txns) if (t.owner === me && t.data.type === 'income' && t.data.date >= start.from) nominal += incomeToSavings(st, t.data);
-  for (const m of moves) if (m.owner === me && m.data.date >= start.from) nominal += m.data.amount;
+  const t = today();
+  const ref = t < start.from ? start.from : t;
+  const L = debtLayers(accs, plans, ctx, pat, ref, st?.payPeriod, oweLeft);
+  // contado de tarjetas por tarjeta (saldo - mensualidades pendientes), con ajuste por la parte ajena
+  let D1 = L.D1; const O = 0;
+  const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c)).map(c => ({ day: c.data.payDay ?? 1, c: Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0)) }));
+  const sum = rows.reduce((x, r) => x + r.c, 0);
+  const factor = sum > 0 ? Math.max(0, sum - L.ajenaLeft) / sum : 0;
+  for (const r of rows) if (r.day <= L.end) D1 += r.c * factor;
+  const Dtot = pat.deudaPropia + pat.porPagar;
+  D1 = Math.min(D1, Math.max(0, Dtot - L.DM));
+  const D2 = Math.max(0, Dtot - D1 - L.DM);
+  const P = pat.a;
+  const w = D2 > 0 ? Math.min(1, Math.max(0, 1 + P / D2)) : 1;
+  const S0 = start.ahorro != null ? start.ahorro : Math.max(0, P - O - L.A) + w * D2 + L.DM;
+  let S = S0;
+  for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= start.from) S += incomeToSavings(st, x.data);
+  for (const x of moves) if (x.owner === me && x.data.date >= start.from) S += x.data.amount;
   const cash = cashTotal(accs, txns, plans, oweLeft);
-  const ahorro = Math.min(nominal, Math.max(0, a));
-  const gasto = Math.max(0, a - nominal);
-  return { cash, ahorro, gasto, respaldo: cash - ahorro - gasto, patrimonio: a, nominal, ahorroStart, from: start.from, started: today() >= start.from, capped: nominal > Math.max(0, a) };
+  const B2 = Math.min(w * D2, Math.max(0, S - L.DM));
+  const ahorro = Math.max(0, Math.min(S - B2 - L.DM, Math.max(0, P)));
+  const ahorroBag = Math.min(Math.max(0, cash), ahorro + B2 + L.DM);
+  const gastoBag = cash - ahorroBag;
+  const libre = gastoBag - D1 - O - L.A;
+  const held: Record<string, number> = {};
+  const spent = goalSpent(moves, me);
+  for (const k of new Set([...Object.keys(spent), ...Object.keys(L.DMby)])) held[k] = (spent[k] ?? 0) + (L.DMby[k] ?? 0);
+  return {
+    cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, D1, D2, A: L.A, O, sinCobertura: D2 - B2,
+    comprometida: D1 + B2 + L.DM, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
+    fixed: start.ahorro != null, goalHeld: held, goalPending: L.DMby
+  };
 }
 
 /** Lo gastado de cada meta (salidas de la bolsa de ahorro respaldadas por la meta). */

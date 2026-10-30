@@ -14,7 +14,7 @@ export default function Goals({ d }: { d: Data }) {
 
   const sorted = [...d.goals].sort((a, b) => (a.data.order ?? 1e9) - (b.data.order ?? 1e9));
   const base = d.bags ? d.bags.ahorro : d.total;
-  const spent = d.bags ? d.goalSpent : d.goalCommitted;
+  const spent = d.bags ? d.bags.goalHeld : d.goalCommitted;
   const al = allocateGoals(d.goals, base, spent);
   const progress = (g: (typeof d.goals)[number]) => goalSaved(g, al.alloc, spent);
   const targetSum = al.linked.reduce((a, g) => a + g.data.target, 0);
@@ -105,7 +105,7 @@ export default function Goals({ d }: { d: Data }) {
             </div>
             <Bar pct={p.pct} tone={p.pct >= 100 ? 'good' : 'warn'} />
             <div className="row"><span>{money(savedNow)} de {money(g.data.target)}</span><b>{p.pct.toFixed(0)}%</b></div>
-            {(spent[g.id] ?? 0) > 0 && (g.data.kind === 'fund' ? <small>Pagado con este fondo: {money(spent[g.id])} (hay que reponerlo)</small> : <small>{d.bags ? 'Gastado de esta meta' : 'Ya comprometido en esta meta'}: {money(spent[g.id])} · ahorrado: {money(al.alloc[g.id] ?? 0)}</small>)}
+            {(spent[g.id] ?? 0) > 0 && (g.data.kind === 'fund' ? <small>Pagado con este fondo: {money(spent[g.id])} (hay que reponerlo)</small> : <small>{d.bags ? <>Gastado {money(d.goalSpent[g.id] ?? 0)} · comprometido a pagos {money(d.bags.goalPending[g.id] ?? 0)} · disponible {money(al.alloc[g.id] ?? 0)}</> : <>Ya comprometido en esta meta: {money(spent[g.id])} · ahorrado: {money(al.alloc[g.id] ?? 0)}</>}</small>)}
             <small>
               {p.left === 0 ? '¡Meta completa!' : <>Te faltan <b>{money(p.left)}</b>{p.perMonth !== null && <> · {p.monthsLeft} meses → <b>{money(p.perMonth)}/mes</b></>}</>}
             </small>

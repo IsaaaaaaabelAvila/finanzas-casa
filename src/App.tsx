@@ -96,16 +96,6 @@ export default function App() {
     for (const cur of mine) if (cur.data.auto && !(cur.data.month in totals) && cur.data.amount !== 0) save('payroll', { ...cur.data, amount: 0 }, null, cur.id);
   }, [s.recs, signedIn, data.myKey]);
 
-  // Arranque de las bolsas: al llegar la fecha, congela el ahorro inicial para que no siga al patrimonio
-  useEffect(() => {
-    if (!signedIn) return;
-    const all = selectData(s, 'all');
-    const bs = all.setting?.data.bagStart;
-    if (bs && bs.ahorro == null && all.bags && all.bags.started && all.setting) {
-      save('setting', { ...all.setting.data, bagStart: { ...bs, ahorro: Math.round(all.bags.ahorroStart * 100) / 100 } }, all.me, all.setting.id);
-    }
-  }, [s.recs, signedIn]);
-
   // Si comparto mi semaforo, publica solo el color (sin numeros) para mi pareja; si lo apago, lo borra
   useEffect(() => {
     if (!signedIn || !data.myKey) return;
