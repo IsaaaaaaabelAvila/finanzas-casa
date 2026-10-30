@@ -11,6 +11,7 @@ export default function BagsCard({ d }: { d: Data }) {
   const [dir, setDir] = useState<1 | -1>(1);
   const [toSave, setToSave] = useState('');
   if (!b) return null;
+  const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } as const;
 
   // Cierre de mes: el ultimo dia del mes y los primeros dias del siguiente; el sobrante incluye la provision de casa que no se uso
   const now = new Date();
@@ -32,22 +33,48 @@ export default function BagsCard({ d }: { d: Data }) {
   };
 
   return (
-    <Card title="Bolsas">
+    <>
       {!b.started && <small>EL ESQUEMA ARRANCA EL {b.from} · ASI SE VERIA HOY</small>}
-      <div className="row" style={{ marginTop: 6 }}><span>Libre para gastar</span><b className={b.libre < 0 ? 'neg' : 'pos'}>{money(b.libre)}</b></div>
-      <div className="row"><span>Ahorro real</span><b>{money(b.ahorro)}</b></div>
-      <div className="row"><span>Deuda comprometida</span><b>{money(b.comprometida)}</b></div>
-      {b.sinCobertura > 0.5 && <div className="row"><span>Deuda sin cobertura</span><b className="neg">{money(b.sinCobertura)}</b></div>}
-      <div className="row"><span>Patrimonio</span><b className={d.pat.a < 0 ? 'neg' : ''}>{money(d.pat.a)} <small>/ con por cobrar {money(d.pat.b)}</small></b></div>
-      <div className="row" style={{ marginTop: 10 }}><span>Bolsa de gasto</span><b>{money(b.gastoBag)}</b></div>
-      <div className="row"><small>Comprometido en deuda inmediata</small><small>{money(b.D1)}</small></div>
-      {b.O > 0.5 && <div className="row"><small>Provision de casa pendiente</small><small>{money(b.O)}</small></div>}
-      {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><small>{money(b.A)}</small></div>}
-      <div className="row"><small>Libre</small><small>{money(b.libre)}</small></div>
-      <div className="row" style={{ marginTop: 6 }}><span>Bolsa de ahorro</span><b>{money(b.ahorroBag)}</b></div>
-      <div className="row"><small>Comprometido a deuda</small><small>{money(b.B2)}</small></div>
-      {b.DM > 0.5 && <div className="row"><small>Deuda financiada por metas</small><small>{money(b.DM)}</small></div>}
-      <div className="row"><small>Ahorro real</small><small>{money(b.ahorro)}</small></div>
+      <Card className="total">
+        <small>LIBRE PARA GASTAR</small>
+        <div className="big" style={{ color: b.libre >= 0 ? 'var(--good)' : 'var(--bad)' }}>{money(b.libre)}</div>
+        {b.libre < 0 && <small>Faltante</small>}
+      </Card>
+      <div style={grid}>
+        <Card>
+          <small>DEUDA COMPROMETIDA</small>
+          <b>{money(b.comprometida)}</b>
+          {b.sinCobertura > 0.5 && <small className="neg">Sin cobertura {money(b.sinCobertura)}</small>}
+        </Card>
+        <Card>
+          <small>AHORRO REAL</small>
+          <b>{money(b.ahorro)}</b>
+        </Card>
+      </div>
+
+      <div style={{ ...grid, alignItems: 'start' }}>
+        <Card title="Bolsa de gasto">
+          <div className="row"><b>Total</b><b>{money(b.gastoBag)}</b></div>
+          <div className="row"><small>Deuda inmediata</small><small>−{money(b.D1)}</small></div>
+          {b.d1.own > 0.5 && <div className="row"><small>· Mensualidades</small><small>{money(b.d1.own)}</small></div>}
+          {b.d1.casa > 0.5 && <div className="row"><small>· Mi parte de casa</small><small>{money(b.d1.casa)}</small></div>}
+          {b.d1.owe > 0.5 && <div className="row"><small>· A personas</small><small>{money(b.d1.owe)}</small></div>}
+          {b.d1.cards.map((c, i) => <div key={i} className="row"><small>· {c.name}{c.stmt ? ' (estado)' : ''}</small><small>{money(c.v)}</small></div>)}
+          {Math.abs(b.d1.adjust) > 0.5 && <div className="row"><small>· Ajuste</small><small>{money(b.d1.adjust)}</small></div>}
+          {b.O > 0.5 && <div className="row"><small>Provision de casa</small><small>−{money(b.O)}</small></div>}
+          {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><small>−{money(b.A)}</small></div>}
+          <div className="row"><b>Libre</b><b className={b.libre < 0 ? 'neg' : 'pos'}>{money(b.libre)}</b></div>
+        </Card>
+        <Card title="Bolsa de ahorro">
+          <div className="row"><b>Total</b><b>{money(b.ahorroBag)}</b></div>
+          <div className="row"><small>Comprometido a deuda</small><small>−{money(b.B2)}</small></div>
+          {b.casaFuture * b.w > 0.5 && <div className="row"><small>· Casa (meses futuros)</small><small>{money(Math.min(b.B2, b.casaFuture * b.w))}</small></div>}
+          {b.DM > 0.5 && <div className="row"><small>Deuda de metas</small><small>−{money(b.DM)}</small></div>}
+          <div className="row"><b>Ahorro real</b><b>{money(b.ahorro)}</b></div>
+        </Card>
+      </div>
+
+      <Card title="Bolsas">
       {!b.fixed && d.setting && (
         <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
           <button className="link" onClick={() => confirm(`Fijar el arranque: bolsa de ahorro inicial de ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(b.libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
@@ -85,6 +112,7 @@ export default function BagsCard({ d }: { d: Data }) {
           <button className="primary" onClick={apply} disabled={!num(amt)}>Mover</button>
         </div>
       )}
-    </Card>
+      </Card>
+    </>
   );
 }
