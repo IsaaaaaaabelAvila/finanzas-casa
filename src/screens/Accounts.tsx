@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { accountBalance, inTotal, minSpend, money, stmtPending, today, totalFunds } from '../calc';
+import { accountBalance, inTotal, minSpend, money, stmtPending, today } from '../calc';
 import { remove, save } from '../store';
 import { Account, AccountType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -69,30 +69,18 @@ export default function Accounts({ d }: { d: Data }) {
 
       {open && !editId && formCard}
 
-      {d.accounts.length > 0 && (() => {
-        const t = totalFunds(d.accounts, d.allTxns, d.allPlans, d.oweLeft);
-        return (
-          <Card className="total">
-            <small>DINERO TOTAL</small>
-            <div className="big">{money(t.total + d.extra)}</div>
-            <div className="row"><small>Disponible (cuentas, efectivo, inversion)</small><span>{money(t.liquid)}</span></div>
-            <div className="row"><small>Tarjetas de credito (deuda)</small><span className={t.cards < 0 ? 'neg' : ''}>{money(t.cards)}</span></div>
-            {d.extra !== 0 && <div className="row"><small>Por cobrar y compras a meses pendientes</small><span>{money(d.extra)}</span></div>}
-            {t.outside !== 0 && <div className="row"><small>Fuera del total</small><span>{money(t.outside)}</span></div>}
-          </Card>
-        );
-      })()}
-
       {(() => {
         const pt = d.pat;
         return (
           <Card title="Patrimonio">
-            <small>PATRIMONIO BASE (A)</small>
-            <div className="big" style={{ color: pt.a >= 0 ? 'var(--good)' : 'var(--bad)' }}>{money(pt.a)}</div>
+            <small>DINERO TOTAL · PATRIMONIO (A)</small>
+            <div className="big" style={{ color: pt.a >= 0 ? 'var(--good)' : 'var(--bad)', fontSize: 40, lineHeight: 1.1 }}>{money(pt.a)}</div>
             {pt.a < 0 && <small>Te faltan {money(-pt.a)} para pasar a positivo</small>}
             <div className="row"><small>Cuentas (debito, efectivo, inversion)</small><span>{money(pt.cuentas)}</span></div>
             <div className="row"><small>Deuda propia con bancos</small><span className="neg">−{money(pt.deudaPropia)}</span></div>
-            <div className="row"><small>Por pagar a personas</small><span className="neg">−{money(pt.porPagar)}</span></div>
+            <div className="row"><small>Por pagar (personas y casa)</small><span className="neg">−{money(pt.porPagar)}</span></div>
+            <div className="row"><small>· A personas (compras que pagaron por ti)</small><span className="neg">−{money(pt.porPagarPersonas)}</span></div>
+            <div className="row"><small>· De la casa (tu {(pt.housePct * 100).toFixed(1)}% de {money(pt.houseOweTotal)} que falta)</small><span className="neg">−{money(pt.porPagarCasa)}</span></div>
             <div className="row"><small>Por cobrar (sin dudosos)</small><span>{money(pt.porCobrar)}</span></div>
             <div className="row"><small>Patrimonio con por cobrar (B)</small><b className={pt.b >= 0 ? 'pos' : 'neg'}>{money(pt.b)}</b></div>
             <small>Memo: deuda total con bancos {money(pt.tarjetas)}; de ella, ajena (cubierta por terceros) {money(pt.ajena)}</small>

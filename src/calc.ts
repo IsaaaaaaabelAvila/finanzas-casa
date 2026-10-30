@@ -514,8 +514,10 @@ export function patrimonio(accs: Item<Account>[], ctx: BudgetCtx, txns: Item<Txn
   const ajenaPlanes = plans.filter(p => p.owner === ctx.me).reduce((s, p) => s + planAjenaLeft(p.data, mm => casaPct(ctx, mm)), 0);
   const ajena = ajenaLedger + casaAjena + ajenaPlanes;
   const deudaPropia = tarjetas - ajena;
-  const porPagar = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((s, l) => s + ledgerStatus(l.data).left, 0) + houseOwe * pct;
+  const porPagarPersonas = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((s, l) => s + ledgerStatus(l.data).left, 0);
+  const porPagarCasa = houseOwe * pct;
+  const porPagar = porPagarPersonas + porPagarCasa;
   const porCobrar = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'lump' && !l.data.dudoso && !l.data.aside).reduce((s, l) => s + ledgerStatus(l.data).left, 0);
   const a = cuentas - deudaPropia - porPagar;
-  return { cuentas, tarjetas, ajena, deudaPropia, porPagar, porCobrar, a, b: a + porCobrar };
+  return { cuentas, tarjetas, ajena, deudaPropia, porPagar, porPagarPersonas, porPagarCasa, housePct: pct, houseOweTotal: houseOwe, porCobrar, a, b: a + porCobrar };
 }
