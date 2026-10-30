@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { firstPaymentMonth, monthLabel, money, planAjenaLeft, planOtherPct, planStatus, today, ym } from '../calc';
+import { budgetCtx } from '../budget';
+import { casaPct, firstPaymentMonth, monthLabel, money, planAjenaLeft, planOtherPct, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, Plan } from '../types';
 import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -22,12 +23,14 @@ function PlansList({ d }: { d: Data }) {
   const [payer, setPayer] = useState('');
   const [goalId, setGoalId] = useState('');
   const [partKey, setPartKey] = useState('');
-  const [partPct, setPartPct] = useState('50');
+  const [partPct, setPartPct] = useState('');
 
   const cards = d.allAccounts.filter(a => a.data.type === 'credit' && (a.owner === d.me || a.owner === null));
   const accName = (id?: string) => d.allAccounts.find(a => a.id === id)?.data.name;
   const personName = (k?: string) => d.people.find(p => p.key === k)?.name;
   const others = d.people.filter(p => p.key !== d.myKey);
+  const bctx = budgetCtx(d);
+  const mineAt = (m: string) => casaPct(bctx, m);
   // una compra liquidada cuyo calendario ya termino deja de mostrarse
   const items = d.plans.map(p => ({ p, st: planStatus(p.data, nowM) })).filter(x => !(x.st.finished && x.st.schedule[x.st.schedule.length - 1] < nowM)).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
   const monthly = items.filter(x => x.st.due && !x.st.finished).reduce((a, x) => a + x.st.monthly, 0);
@@ -45,7 +48,7 @@ function PlansList({ d }: { d: Data }) {
       startDate: start, firstMonth, paid: [], category, goalId: goalId || undefined,
       accountId: accountId || (shared ? undefined : cards[0]?.id) || undefined,
       paidBy: shared ? (payer || d.myKey || d.people[0]?.key) : undefined,
-      partes: !shared && partKey && num(partPct) > 0 ? [{ key: partKey, pct: Math.min(100, num(partPct)) }] : undefined
+      partes: !shared && partKey ? [{ key: partKey, pct: num(partPct) > 0 ? Math.min(100, num(partPct)) : undefined }] : undefined
     };
     save('plan', plan, shared ? null : d.me);
     setDesc(''); setTotal(''); setOpen(false);
@@ -103,7 +106,7 @@ function PlansList({ d }: { d: Data }) {
                   {others.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
                 </select>
               </Field>
-              {partKey && <Field label="% de la compra que le toca"><input inputMode="decimal" value={partPct} onChange={e => setPartPct(e.target.value)} /></Field>}
+              {partKey && <Field label="% de la compra que le toca (vacio = segun ingresos de cada mes; 50 = mitad y mitad)"><input inputMode="decimal" value={partPct} onChange={e => setPartPct(e.target.value)} placeholder="Segun ingresos" /></Field>}
             </>
           )}
           <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Compra comun de la casa</label>
@@ -131,7 +134,7 @@ function PlansList({ d }: { d: Data }) {
             (p.data.partes ?? []).length > 0 ? (
               <div style={{ marginTop: 6 }}>
                 <small>
-                  Titular: yo · {(p.data.partes ?? []).map(x => `${personName(x.key) ?? '—'} ${x.pct}%`).join(', ')} · mi parte {money(st.monthly * (1 - planOtherPct(p.data)))}/mes · por reembolsar {money(planAjenaLeft(p.data))}
+                  Titular: yo · {(p.data.partes ?? []).map(x => `${personName(x.key) ?? '—'} ${x.pct != null ? x.pct + '%' : 'segun ingresos'}`).join(', ')} · mi parte {money(st.monthly * (1 - planOtherPct(p.data, mineAt(nowM))))}/mes · por reembolsar {money(planAjenaLeft(p.data, mineAt))}
                   {' · '}<button className="link" style={{ padding: 0 }} onClick={() => save('plan', { ...p.data, partes: undefined, reimb: undefined }, p.owner, p.id)}>Quitar</button>
                 </small>
                 <div className="chips">
@@ -143,7 +146,7 @@ function PlansList({ d }: { d: Data }) {
               </div>
             ) : others.length > 0 && (
               <label className="field" style={{ margin: '8px 0 0' }}><span>¿Alguien mas es responsable de una parte?</span>
-                <select value="" onChange={e => { const k = e.target.value; const v = k && num(prompt('¿Que % de la compra le toca?', '50') || '0'); if (k && v) save('plan', { ...p.data, partes: [{ key: k, pct: Math.min(100, v as number) }] }, p.owner, p.id); }}>
+                <select value="" onChange={e => { const k = e.target.value; if (!k) return; const r = prompt('¿Que % de la compra le toca? (vacio = segun ingresos de cada mes)', ''); if (r === null) return; const v = num(r); save('plan', { ...p.data, partes: [{ key: k, pct: v > 0 ? Math.min(100, v) : undefined }] }, p.owner, p.id); }}>
                   <option value="">— elegir persona —</option>
                   {others.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
                 </select>

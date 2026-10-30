@@ -11,6 +11,7 @@ export interface Account {
   inTotal?: boolean;    // cuenta dentro del total de dinero (por defecto: debito, efectivo y credito)
   auto?: 'owe';         // saldo = lo que debo en "Yo debo" (se calcula solo)
   feeNote?: string;
+  stmt?: { amount: number; due: string; asOf: string };  // estado de cuenta: monto a pagar, fecha limite y dia en que se capturo (los pagos posteriores lo van bajando)
 }
 export type TxnType = 'income' | 'expense' | 'transfer' | 'adjust' | 'loan' | 'collect' | 'payout';  // loan: presto (cuenta -> por cobrar); collect: cobro (por cobrar -> cuenta); payout: pago a una persona (cuenta -> por pagar)
 export interface Txn {
@@ -40,7 +41,7 @@ export interface Plan {
   category?: string;    // categoria del gasto
   txnId?: string;       // movimiento del que viene (ya cuenta como gasto; la compra no se suma otra vez)
   goalId?: string;      // se paga con el dinero de esta meta; no resta del libre
-  partes?: { key: string; pct: number }[];  // responsables distintos al titular y su % de la compra (el resto es del titular)
+  partes?: { key: string; pct?: number }[];  // responsables distintos al titular y su % (sin %: el que corresponde por ingresos en cada mensualidad)
   reimb?: string[];     // meses (YYYY-MM) cuya parte ajena ya fue reembolsada al titular
   cardId?: string;      // tarjeta de la compra, solo para marcar mensualidades al pagarla (no afecta el saldo)
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { money, today } from '../calc';
+import { addMonthsYm, money, today, ym } from '../calc';
 import { save } from '../store';
 import { Card, Data, num } from '../ui';
 
@@ -9,7 +9,20 @@ export default function BagsCard({ d }: { d: Data }) {
   const [open, setOpen] = useState(false);
   const [amt, setAmt] = useState('');
   const [dir, setDir] = useState<1 | -1>(1);
+  const [toSave, setToSave] = useState('');
   if (!b) return null;
+
+  // Cierre de mes: el ultimo dia del mes y los primeros dias del siguiente; el sobrante incluye la provision de casa que no se uso
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const cut = now.getDate() === lastDay ? ym(now) : now.getDate() <= 3 ? addMonthsYm(ym(now), -1) : null;
+  const cutKey = cut ? `cierre:${cut}` : '';
+  const closing = Boolean(cut && b.started && cut >= b.from.slice(0, 7) && !d.bagmoves.some(x => x.data.key === cutKey));
+  const sob = b.libre + b.O;
+  const close = (amount: number) => {
+    save('bagmove', { date: today(), amount, note: `Cierre ${cut}`, key: cutKey }, d.me);
+    setToSave('');
+  };
 
   const apply = () => {
     const v = num(amt);
@@ -38,6 +51,25 @@ export default function BagsCard({ d }: { d: Data }) {
       {!b.fixed && d.setting && (
         <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
           <button className="link" onClick={() => confirm(`Fijar el arranque: bolsa de ahorro inicial de ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(b.libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
+        </div>
+      )}
+      {closing && (
+        <div className="settle">
+          <small>CIERRE DE {cut}</small>
+          <div className="row"><span>{sob >= 0 ? 'Sobrante' : 'Faltante'}</span><b className={sob < 0 ? 'neg' : 'pos'}>{money(sob)}</b></div>
+          {sob >= 0 ? (
+            <>
+              <label className="field"><span>Pasar a ahorro (lo demas se arrastra al mes siguiente)</span><input inputMode="decimal" value={toSave} onChange={e => setToSave(e.target.value)} placeholder="0.00" /></label>
+              <div className="row-actions" style={{ justifyContent: 'flex-start', gap: 8 }}>
+                <button className="primary" onClick={() => close(Math.min(sob, Math.abs(num(toSave))))}>{num(toSave) > 0 ? 'Pasar a ahorro' : 'Arrastrar todo'}</button>
+              </div>
+            </>
+          ) : (
+            <div className="row-actions" style={{ justifyContent: 'flex-start', gap: 8 }}>
+              <button className="primary" onClick={() => close(sob)}>Cubrir con ahorro</button>
+              <button onClick={() => close(0)}>Arrastrar faltante</button>
+            </div>
+          )}
         </div>
       )}
       <div className="row-actions" style={{ justifyContent: 'flex-start' }}>

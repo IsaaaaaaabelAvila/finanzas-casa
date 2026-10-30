@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { accountBalance, inTotal, minSpend, money, totalFunds } from '../calc';
+import { accountBalance, inTotal, minSpend, money, stmtPending, today, totalFunds } from '../calc';
 import { remove, save } from '../store';
 import { Account, AccountType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -10,25 +10,28 @@ const TYPE_LABEL: Record<AccountType, string> = { debit: 'Debito', credit: 'Cred
 export default function Accounts({ d }: { d: Data }) {
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [f, setF] = useState({ name: '', type: 'debit' as AccountType, initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', maxSpend: '', inTotal: true, shared: false });
+  const [f, setF] = useState({ name: '', type: 'debit' as AccountType, initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', maxSpend: '', inTotal: true, shared: false, stmt: '', stmtDue: '' });
   const set = (k: keyof typeof f, v: any) => setF(p => ({ ...p, [k]: v }));
 
   function startEdit(id: string) {
     const a = d.allAccounts.find(x => x.id === id)!;
-    setF({ name: a.data.name, type: a.data.type, initial: String(a.data.initial), cutDay: a.data.cutDay ? String(a.data.cutDay) : '', payDay: a.data.payDay ? String(a.data.payDay) : '', limit: a.data.limit ? String(a.data.limit) : '', minSpend: a.data.minSpend ? String(a.data.minSpend) : '', maxSpend: a.data.maxSpend ? String(a.data.maxSpend) : '', inTotal: inTotal(a), shared: a.owner === null });
+    setF({ name: a.data.name, type: a.data.type, initial: String(a.data.initial), cutDay: a.data.cutDay ? String(a.data.cutDay) : '', payDay: a.data.payDay ? String(a.data.payDay) : '', limit: a.data.limit ? String(a.data.limit) : '', minSpend: a.data.minSpend ? String(a.data.minSpend) : '', maxSpend: a.data.maxSpend ? String(a.data.maxSpend) : '', inTotal: inTotal(a), shared: a.owner === null, stmt: a.data.stmt ? String(a.data.stmt.amount) : '', stmtDue: a.data.stmt?.due ?? '' });
     setEditId(id); setOpen(true);
   }
-  function reset() { setF({ name: '', type: 'debit', initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', maxSpend: '', inTotal: true, shared: false }); setEditId(null); setOpen(false); }
+  function reset() { setF({ name: '', type: 'debit', initial: '', cutDay: '', payDay: '', limit: '', minSpend: '', maxSpend: '', inTotal: true, shared: false, stmt: '', stmtDue: '' }); setEditId(null); setOpen(false); }
 
   function submit() {
     if (!f.name.trim()) return;
-    const a: Account = { name: f.name.trim(), type: f.type, initial: num(f.initial), inTotal: f.inTotal };
+    const prev = editId ? d.allAccounts.find(x => x.id === editId)?.data : undefined;
+    const a: Account = { ...prev, name: f.name.trim(), type: f.type, initial: num(f.initial), inTotal: f.inTotal };
     if (f.type === 'credit') {
       a.cutDay = Math.min(31, Math.max(1, Math.round(num(f.cutDay)))) || undefined;
       a.payDay = Math.round(num(f.payDay)) || undefined;
       a.limit = num(f.limit) || undefined;
       a.minSpend = num(f.minSpend) || undefined;
       a.maxSpend = num(f.maxSpend) || undefined;
+      const same = prev?.stmt && prev.stmt.amount === num(f.stmt) && prev.stmt.due === f.stmtDue;
+      a.stmt = num(f.stmt) > 0 && f.stmtDue ? (same ? prev!.stmt : { amount: num(f.stmt), due: f.stmtDue, asOf: today() }) : undefined;
     }
     save('account', a, f.shared ? null : d.me, editId ?? undefined);
     reset();
@@ -47,6 +50,8 @@ export default function Accounts({ d }: { d: Data }) {
             <>
               <Field label="Dia de corte (1-31)"><input inputMode="numeric" value={f.cutDay} onChange={e => set('cutDay', e.target.value)} /></Field>
               <Field label="Dia limite de pago"><input inputMode="numeric" value={f.payDay} onChange={e => set('payDay', e.target.value)} /></Field>
+              <Field label="Estado de cuenta: monto a pagar (vacio si no hay)"><input inputMode="decimal" value={f.stmt} onChange={e => set('stmt', e.target.value)} /></Field>
+              {num(f.stmt) > 0 && <Field label="Fecha limite de ese pago"><input type="date" value={f.stmtDue} onChange={e => set('stmtDue', e.target.value)} /></Field>}
               <Field label="Limite de credito"><input inputMode="decimal" value={f.limit} onChange={e => set('limit', e.target.value)} /></Field>
               <Field label="Gasto minimo por periodo (para evitar cobro por falta de uso; vacio si no aplica)"><input inputMode="decimal" value={f.minSpend} onChange={e => set('minSpend', e.target.value)} /></Field>
               <Field label="Tope maximo de gasto por periodo (vacio si no aplica)"><input inputMode="decimal" value={f.maxSpend} onChange={e => set('maxSpend', e.target.value)} /></Field>
@@ -111,6 +116,7 @@ export default function Accounts({ d }: { d: Data }) {
                 Corte dia {a.data.cutDay ?? '—'} · pago dia {a.data.payDay ?? '—'}
                 {a.data.limit ? ` · disponible ${money(a.data.limit + bal)}` : ''}
                 {ms ? ` · minimo ${money(ms.spent)}/${money(ms.min)}` : ''}
+                {a.data.stmt && stmtPending(a, d.allTxns) > 0.5 ? ` · estado de cuenta ${money(stmtPending(a, d.allTxns))} antes del ${a.data.stmt.due}` : ''}
               </small>
             )}
             <div className="row-actions">

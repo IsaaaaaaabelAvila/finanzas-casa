@@ -119,9 +119,16 @@ export function planSchedule(p: Plan): string[] {
   return Array.from({ length: p.months }, (_, i) => addMonthsYm(first, i));
 }
 /** Fraccion (0-1) de una compra que pertenece a otros responsables. */
-export const planOtherPct = (p: Plan) => Math.min(1, Math.max(0, (p.partes ?? []).reduce((a, x) => a + x.pct, 0) / 100));
+export const planOtherPct = (p: Plan, mineShare = 0.5) => Math.min(1, Math.max(0, (p.partes ?? []).reduce((a, x) => a + (x.pct ?? (1 - mineShare) * 100), 0) / 100));
 /** Parte ajena que aun no han reembolsado al titular. */
-export const planAjenaLeft = (p: Plan) => { const s = planStatus(p); return s.monthly * planOtherPct(p) * s.schedule.filter(m => !(p.reimb ?? []).includes(m)).length; };
+export const planAjenaLeft = (p: Plan, mineAt: (m: string) => number = () => 0.5) => { const s = planStatus(p); return s.schedule.filter(m => !(p.reimb ?? []).includes(m)).reduce((a, m) => a + s.monthly * planOtherPct(p, mineAt(m)), 0); };
+/** Lo que falta del estado de cuenta capturado (los traspasos a la tarjeta posteriores a la captura lo van pagando). */
+export const stmtPending = (a: Item<Account>, txns: Item<Txn>[]) => {
+  const s = a.data.stmt;
+  if (!s) return 0;
+  const paid = txns.filter(t => t.data.type === 'transfer' && t.data.toAccountId === a.id && t.data.date >= s.asOf).reduce((x, t) => x + t.data.amount, 0);
+  return Math.max(0, s.amount - paid);
+};
 export function planStatus(p: Plan, month = ym(new Date())) {
   const schedule = planSchedule(p);
   const paidSet = new Set(p.paid ?? []);
@@ -236,14 +243,14 @@ export const cfgAt = (st: Setting | null, m: string) => {
   const arr = (st?.plan ?? []).filter(c => c.from <= m);
   return arr.length ? arr[arr.length - 1] : null;
 };
-const casaPct = (ctx: BudgetCtx, m: string) => {
+export const casaPct = (ctx: BudgetCtx, m: string) => {
   const ref = m >= ym(new Date()) ? addMonthsYm(m, -1) : m; // a medio mes las nominas son parciales: se usa el ultimo mes cerrado
   return houseSummary(m, ctx.people, ctx.payrolls, [], [], [], ref).rows.find(r => r.key === ctx.myKey)?.pct ?? 0;
 };
 
 /** Comprometido del mes: mis mensualidades, lo que debo a personas y mi parte de las mensualidades de la casa. */
 export function monthCommitments(ctx: BudgetCtx, m: string) {
-  const own = ctx.plans.filter(p => p.owner === ctx.me && !p.data.goalId).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly * (1 - planOtherPct(p.data)) : 0); }, 0);
+  const own = ctx.plans.filter(p => p.owner === ctx.me && !p.data.goalId).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly * (1 - planOtherPct(p.data, casaPct(ctx, m))) : 0); }, 0);
   const owe = ctx.ledger.filter(l => l.data.dir === 'owe' && !l.data.goalId).reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
   const casaTotal = ctx.plans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
   const casa = casaTotal * casaPct(ctx, m);
@@ -394,6 +401,17 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
   const pct = casaPct(ctx, m);
   const accById = new Map(accs.map(x => [x.id, x]));
   const dueDay = (id?: string) => accById.get(id ?? '')?.data.payDay ?? 1;
+  // tarjetas con estado de cuenta vigente: su pago reemplaza lo que se estimaria con mensualidades y compras de contado
+  const stmtCards = new Map<string, { pending: number; day: number }>();
+  for (const a of accs) {
+    const s = a.data.stmt;
+    if (!s || a.data.type !== 'credit') continue;
+    const pend = stmtPending(a, ctx.txns);
+    const dm = s.due.slice(0, 7);
+    if (pend <= 0.5 || dm > m) continue;
+    stmtCards.set(a.id, { pending: pend, day: dm < m ? 0 : Number(s.due.slice(8, 10)) });
+  }
+  const cardA: Record<string, number> = {};
   let D1 = 0, A = 0, DM = 0;
   const DMby: Record<string, number> = {};
   const addDM = (id: string, v: number) => { DM += v; DMby[id] = (DMby[id] ?? 0) + v; };
@@ -406,9 +424,16 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     const titular = mine || p.data.paidBy === ctx.myKey;
     if (titular && cid) planRem[cid] = (planRem[cid] ?? 0) + st.remainingAmount;
     if (mine && p.data.goalId) { addDM(p.data.goalId, st.remainingAmount); continue; }
-    if (!st.due || st.paidThisMonth || dueDay(cid) > end) continue;
-    if (mine) { const o = planOtherPct(p.data); D1 += st.monthly * (1 - o); if (o > 0 && !(p.data.reimb ?? []).includes(m)) A += st.monthly * o; }
-    else { D1 += st.monthly * pct; if (p.data.paidBy === ctx.myKey) A += st.monthly * (1 - pct); }
+    const sc = cid ? stmtCards.get(cid) : undefined;
+    if (!st.due || st.paidThisMonth || (sc ? sc.day : dueDay(cid)) > end) continue;
+    if (mine) {
+      const o = planOtherPct(p.data, pct);
+      if (!sc) D1 += st.monthly * (1 - o);
+      if (o > 0 && !(p.data.reimb ?? []).includes(m)) { A += st.monthly * o; if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly * o; }
+    } else {
+      if (!sc) D1 += st.monthly * pct;
+      if (p.data.paidBy === ctx.myKey) { A += st.monthly * (1 - pct); if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly * (1 - pct); }
+    }
   }
   let ajenaLeft = 0;
   for (const l of ctx.ledger) {
@@ -421,7 +446,8 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
       if (st.due && !st.paidThisMonth) A += st.monthly;
     }
   }
-  return { D1, A, DM, DMby, planRem, end, pct, ajenaLeft, ref };
+  for (const [id, sc] of stmtCards) if (sc.day <= end) D1 += Math.max(0, sc.pending - (cardA[id] ?? 0));
+  return { D1, A, DM, DMby, planRem, end, pct, ajenaLeft, ref, stmtCards };
 }
 
 /**
@@ -439,7 +465,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   let D1 = L.D1;
   const prov = casaProvision(ctx, ref.slice(0, 7));
   const O = prov.pending;
-  const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c)).map(c => ({ day: c.data.payDay ?? 1, c: Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0)) }));
+  const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c) && !L.stmtCards.has(c.id)).map(c => ({ day: c.data.payDay ?? 1, c: Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0)) }));
   const sum = rows.reduce((x, r) => x + r.c, 0);
   const factor = sum > 0 ? Math.max(0, sum - L.ajenaLeft) / sum : 0;
   for (const r of rows) if (r.day <= L.end) D1 += r.c * factor;
@@ -485,7 +511,7 @@ export function patrimonio(accs: Item<Account>[], ctx: BudgetCtx, txns: Item<Txn
   const houseOwe = house.filter(p => p.data.paidBy !== ctx.myKey).reduce((s, p) => s + planStatus(p.data).remainingAmount, 0);  // el titular es otro
   const ajenaLedger = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'installments' && !l.data.dudoso).reduce((s, l) => s + ledgerStatus(l.data).left, 0);
   const casaAjena = housePay * (1 - pct);
-  const ajenaPlanes = plans.filter(p => p.owner === ctx.me).reduce((s, p) => s + planAjenaLeft(p.data), 0);
+  const ajenaPlanes = plans.filter(p => p.owner === ctx.me).reduce((s, p) => s + planAjenaLeft(p.data, mm => casaPct(ctx, mm)), 0);
   const ajena = ajenaLedger + casaAjena + ajenaPlanes;
   const deudaPropia = tarjetas - ajena;
   const porPagar = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((s, l) => s + ledgerStatus(l.data).left, 0) + houseOwe * pct;
