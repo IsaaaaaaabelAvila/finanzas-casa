@@ -39,18 +39,13 @@ export default function BagsCard({ d }: { d: Data }) {
         <small>LIBRE PARA GASTAR</small>
         <div className="big" style={{ color: b.libre >= 0 ? 'var(--good)' : 'var(--bad)' }}>{money(b.libre)}</div>
         {b.libre < 0 && <small>Faltante</small>}
+        <div className="row" style={{ marginTop: 10 }}><span>Deuda comprometida</span><b>{money(b.comprometida)}</b></div>
+        <div className="row"><small>· Banco (deuda personal)</small><small>{money(d.pat.deudaPropia)}</small></div>
+        <div className="row"><small>· Otros (personas)</small><small>{money(d.pat.porPagarPersonas)}</small></div>
+        <div className="row"><small>· Casa</small><small>{money(d.pat.porPagarCasa)}</small></div>
+        {b.sinCobertura > 0.5 && <div className="row"><small className="neg">· Sin cobertura (aun no apartada)</small><small className="neg">−{money(b.sinCobertura)}</small></div>}
+        <div className="row"><span>Ahorro real</span><b>{money(b.ahorro)}</b></div>
       </Card>
-      <div style={grid}>
-        <Card>
-          <small>DEUDA COMPROMETIDA</small>
-          <b>{money(b.comprometida)}</b>
-          {b.sinCobertura > 0.5 && <small className="neg">Sin cobertura {money(b.sinCobertura)}</small>}
-        </Card>
-        <Card>
-          <small>AHORRO REAL</small>
-          <b>{money(b.ahorro)}</b>
-        </Card>
-      </div>
 
       <div style={{ ...grid, alignItems: 'start' }}>
         <Card title="Bolsa de gasto">
