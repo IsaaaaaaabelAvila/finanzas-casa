@@ -327,7 +327,13 @@ export function budgetLevel(b: { base: number; carry: number; commit: number; sp
   if (used > elapsed + 0.15 || b.libre < g0 * 0.15) return 'amber';
   return 'green';
 }
-export const levelText = (l: Level) => l === 'green' ? 'Va bien este mes' : l === 'amber' ? 'Va por encima del ritmo del mes' : 'Ya no queda para gastar este mes';
+/** Semaforo de las bolsas: rojo si ya no hay libre; ambar si el libre es menos de la cuarta parte de la bolsa de gasto. */
+export function bagLevel(libre: number, gastoBag: number): Level {
+  if (libre <= 0) return 'red';
+  if (libre < Math.max(0, gastoBag) * 0.25) return 'amber';
+  return 'green';
+}
+export const levelText = (l: Level) => l === 'green' ? 'Libre para gastar de sobra' : l === 'amber' ? 'Queda poco libre para gastar' : 'Ya no queda libre para gastar';
 
 /** Lo ahorrado en una meta: lo asignado de tu dinero total (+ lo ya comprometido si es una meta de gasto). */
 export const goalSaved = (g: Item<Goal>, alloc: Record<string, number>, committed: Record<string, number>) =>

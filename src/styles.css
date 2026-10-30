@@ -24,7 +24,8 @@ h1, h3, h4, .stat b, .tx b, .row b { font-family: var(--serif); font-weight: 500
 .month-nav b { font-family: var(--serif); font-weight: 500; font-size: 17px; }
 small { color: var(--muted); display: block; font-size: 12.5px; }
 .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 14px; }
-@media (min-width: 640px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+.stats .stat:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (min-width: 640px) { .stats { grid-template-columns: repeat(3, 1fr); } .stats .stat:last-child:nth-child(odd) { grid-column: auto; } }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 14px; }
 .stat small { text-transform: uppercase; letter-spacing: .08em; font-size: 10.5px; }
 .stat b { font-size: 20px; display: block; margin-top: 4px; }

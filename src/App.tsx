@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { cloudEnabled, supabase } from './supabase';
 import { remove, resetAll, save, setState, useStore } from './store';
-import { budgetCtx } from './budget';
-import { budgetFor, budgetLevel, levelText, ym } from './calc';
+import { bagLevel, levelText } from './calc';
 import { startAutoSync, syncNow } from './sync';
 import { scheduleAll } from './notifications';
 import Auth from './Auth';
@@ -102,12 +101,10 @@ export default function App() {
     const all = selectData(s, 'all');
     const existing = all.statuses.find(x => x.data.person === all.myKey);
     const st = all.setting?.data;
-    if (!st?.shareStatus || !st.plan?.length) { if (existing) remove(existing.id); return; }
-    const cur = ym(new Date());
-    if (cur < (st.startMonth ?? '2026-11')) { if (existing) remove(existing.id); return; }
-    const b = budgetFor(budgetCtx(all), cur);
-    if (!b) return;
-    const level = budgetLevel(b, new Date());
+    const b = all.bags;
+    if (!st?.shareStatus || !b || !b.started) { if (existing) remove(existing.id); return; }
+    const cur = new Date().toISOString().slice(0, 7);
+    const level = bagLevel(b.libre, b.gastoBag);
     if (existing && existing.data.level === level && existing.data.month === cur) return;
     save('status', { person: all.myKey!, level, month: cur, text: levelText(level) }, null, existing?.id);
   }, [s.recs, signedIn, data.myKey]);
