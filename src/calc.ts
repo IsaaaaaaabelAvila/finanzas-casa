@@ -118,6 +118,10 @@ export function planSchedule(p: Plan): string[] {
   const first = p.firstMonth ?? p.startDate.slice(0, 7);
   return Array.from({ length: p.months }, (_, i) => addMonthsYm(first, i));
 }
+/** Fraccion (0-1) de una compra que pertenece a otros responsables. */
+export const planOtherPct = (p: Plan) => Math.min(1, Math.max(0, (p.partes ?? []).reduce((a, x) => a + x.pct, 0) / 100));
+/** Parte ajena que aun no han reembolsado al titular. */
+export const planAjenaLeft = (p: Plan) => { const s = planStatus(p); return s.monthly * planOtherPct(p) * s.schedule.filter(m => !(p.reimb ?? []).includes(m)).length; };
 export function planStatus(p: Plan, month = ym(new Date())) {
   const schedule = planSchedule(p);
   const paidSet = new Set(p.paid ?? []);
@@ -239,7 +243,7 @@ const casaPct = (ctx: BudgetCtx, m: string) => {
 
 /** Comprometido del mes: mis mensualidades, lo que debo a personas y mi parte de las mensualidades de la casa. */
 export function monthCommitments(ctx: BudgetCtx, m: string) {
-  const own = ctx.plans.filter(p => p.owner === ctx.me && !p.data.goalId).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  const own = ctx.plans.filter(p => p.owner === ctx.me && !p.data.goalId).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly * (1 - planOtherPct(p.data)) : 0); }, 0);
   const owe = ctx.ledger.filter(l => l.data.dir === 'owe' && !l.data.goalId).reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
   const casaTotal = ctx.plans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
   const casa = casaTotal * casaPct(ctx, m);
@@ -403,7 +407,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     if (titular && cid) planRem[cid] = (planRem[cid] ?? 0) + st.remainingAmount;
     if (mine && p.data.goalId) { addDM(p.data.goalId, st.remainingAmount); continue; }
     if (!st.due || st.paidThisMonth || dueDay(cid) > end) continue;
-    if (mine) D1 += st.monthly;
+    if (mine) { const o = planOtherPct(p.data); D1 += st.monthly * (1 - o); if (o > 0 && !(p.data.reimb ?? []).includes(m)) A += st.monthly * o; }
     else { D1 += st.monthly * pct; if (p.data.paidBy === ctx.myKey) A += st.monthly * (1 - pct); }
   }
   let ajenaLeft = 0;
@@ -481,7 +485,8 @@ export function patrimonio(accs: Item<Account>[], ctx: BudgetCtx, txns: Item<Txn
   const houseOwe = house.filter(p => p.data.paidBy !== ctx.myKey).reduce((s, p) => s + planStatus(p.data).remainingAmount, 0);  // el titular es otro
   const ajenaLedger = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'installments' && !l.data.dudoso).reduce((s, l) => s + ledgerStatus(l.data).left, 0);
   const casaAjena = housePay * (1 - pct);
-  const ajena = ajenaLedger + casaAjena;
+  const ajenaPlanes = plans.filter(p => p.owner === ctx.me).reduce((s, p) => s + planAjenaLeft(p.data), 0);
+  const ajena = ajenaLedger + casaAjena + ajenaPlanes;
   const deudaPropia = tarjetas - ajena;
   const porPagar = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((s, l) => s + ledgerStatus(l.data).left, 0) + houseOwe * pct;
   const porCobrar = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'lump' && !l.data.dudoso && !l.data.aside).reduce((s, l) => s + ledgerStatus(l.data).left, 0);

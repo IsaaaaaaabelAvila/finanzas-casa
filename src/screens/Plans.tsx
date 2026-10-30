@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { firstPaymentMonth, monthLabel, money, planStatus, today, ym } from '../calc';
+import { firstPaymentMonth, monthLabel, money, planAjenaLeft, planOtherPct, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, Plan } from '../types';
 import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -21,10 +21,13 @@ function PlansList({ d }: { d: Data }) {
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
   const [goalId, setGoalId] = useState('');
+  const [partKey, setPartKey] = useState('');
+  const [partPct, setPartPct] = useState('50');
 
   const cards = d.allAccounts.filter(a => a.data.type === 'credit' && (a.owner === d.me || a.owner === null));
   const accName = (id?: string) => d.allAccounts.find(a => a.id === id)?.data.name;
   const personName = (k?: string) => d.people.find(p => p.key === k)?.name;
+  const others = d.people.filter(p => p.key !== d.myKey);
   // una compra liquidada cuyo calendario ya termino deja de mostrarse
   const items = d.plans.map(p => ({ p, st: planStatus(p.data, nowM) })).filter(x => !(x.st.finished && x.st.schedule[x.st.schedule.length - 1] < nowM)).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
   const monthly = items.filter(x => x.st.due && !x.st.finished).reduce((a, x) => a + x.st.monthly, 0);
@@ -41,7 +44,8 @@ function PlansList({ d }: { d: Data }) {
       description: desc.trim(), total: num(total), months: Math.max(1, Math.round(num(months))),
       startDate: start, firstMonth, paid: [], category, goalId: goalId || undefined,
       accountId: accountId || (shared ? undefined : cards[0]?.id) || undefined,
-      paidBy: shared ? (payer || d.myKey || d.people[0]?.key) : undefined
+      paidBy: shared ? (payer || d.myKey || d.people[0]?.key) : undefined,
+      partes: !shared && partKey && num(partPct) > 0 ? [{ key: partKey, pct: Math.min(100, num(partPct)) }] : undefined
     };
     save('plan', plan, shared ? null : d.me);
     setDesc(''); setTotal(''); setOpen(false);
@@ -91,6 +95,17 @@ function PlansList({ d }: { d: Data }) {
               )}
             </>
           )}
+          {!shared && others.length > 0 && (
+            <>
+              <Field label="Responsable de una parte (opcional)">
+                <select value={partKey} onChange={e => setPartKey(e.target.value)}>
+                  <option value="">— solo yo —</option>
+                  {others.map(p => <option key={p.key} value={p.key}>{p.name}</option>)}
+                </select>
+              </Field>
+              {partKey && <Field label="% de la compra que le toca"><input inputMode="decimal" value={partPct} onChange={e => setPartPct(e.target.value)} /></Field>}
+            </>
+          )}
           <label className="check"><input type="checkbox" checked={shared} onChange={e => setShared(e.target.checked)} /> Compra comun de la casa</label>
           {shared && d.people.length > 0 && (
             <Field label="Quien la paga">
@@ -112,6 +127,29 @@ function PlansList({ d }: { d: Data }) {
             {st.finished ? 'Liquidado' : `${st.paidCount} de ${p.data.months} pagadas · faltan ${st.remainingMonths} (${money(st.remainingAmount)})`}
             {' · '}{ownerLabel(p.owner)}{personName(p.data.paidBy) ? ` · paga ${personName(p.data.paidBy)}` : ''}{accName(p.data.accountId) ? ` · ${accName(p.data.accountId)}` : ''}
           </small>
+          {p.owner === d.me && (
+            (p.data.partes ?? []).length > 0 ? (
+              <div style={{ marginTop: 6 }}>
+                <small>
+                  Titular: yo · {(p.data.partes ?? []).map(x => `${personName(x.key) ?? '—'} ${x.pct}%`).join(', ')} · mi parte {money(st.monthly * (1 - planOtherPct(p.data)))}/mes · por reembolsar {money(planAjenaLeft(p.data))}
+                  {' · '}<button className="link" style={{ padding: 0 }} onClick={() => save('plan', { ...p.data, partes: undefined, reimb: undefined }, p.owner, p.id)}>Quitar</button>
+                </small>
+                <div className="chips">
+                  {st.schedule.map(m => {
+                    const r = (p.data.reimb ?? []).includes(m);
+                    return <button key={m} className={`chip-m ${r ? 'paid' : ''}`} title={r ? 'Reembolsado (toca para desmarcar)' : 'Toca cuando te reembolsen esta mensualidad'} onClick={() => save('plan', { ...p.data, reimb: r ? (p.data.reimb ?? []).filter(x => x !== m) : [...(p.data.reimb ?? []), m].sort() }, p.owner, p.id)}>{monthLabel(m)}</button>;
+                  })}
+                </div>
+              </div>
+            ) : others.length > 0 && (
+              <label className="field" style={{ margin: '8px 0 0' }}><span>¿Alguien mas es responsable de una parte?</span>
+                <select value="" onChange={e => { const k = e.target.value; const v = k && num(prompt('¿Que % de la compra le toca?', '50') || '0'); if (k && v) save('plan', { ...p.data, partes: [{ key: k, pct: Math.min(100, v as number) }] }, p.owner, p.id); }}>
+                  <option value="">— elegir persona —</option>
+                  {others.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
+                </select>
+              </label>
+            )
+          )}
           <div className="chips">
             {st.schedule.map(m => {
               const paid = (p.data.paid ?? []).includes(m);

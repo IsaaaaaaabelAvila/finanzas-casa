@@ -40,6 +40,8 @@ export interface Plan {
   category?: string;    // categoria del gasto
   txnId?: string;       // movimiento del que viene (ya cuenta como gasto; la compra no se suma otra vez)
   goalId?: string;      // se paga con el dinero de esta meta; no resta del libre
+  partes?: { key: string; pct: number }[];  // responsables distintos al titular y su % de la compra (el resto es del titular)
+  reimb?: string[];     // meses (YYYY-MM) cuya parte ajena ya fue reembolsada al titular
   cardId?: string;      // tarjeta de la compra, solo para marcar mensualidades al pagarla (no afecta el saldo)
 }
 export interface Goal {
