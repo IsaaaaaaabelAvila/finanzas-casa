@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { addMonthsYm, money, today, ym } from '../calc';
+import { addMonthsYm, money, today, txnKind, ym } from '../calc';
 import { save } from '../store';
 import { Card, Data, num } from '../ui';
 
@@ -10,6 +10,8 @@ export default function BagsCard({ d }: { d: Data }) {
   const [amt, setAmt] = useState('');
   const [dir, setDir] = useState<1 | -1>(1);
   const [toSave, setToSave] = useState('');
+  const [cmode, setCmode] = useState<'q' | 'm'>('q');
+  const [chk, setChk] = useState(false);
   if (!b) return null;
   const libre = Math.abs(b.libre) < 0.005 ? 0 : b.libre;
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } as const;
@@ -17,7 +19,11 @@ export default function BagsCard({ d }: { d: Data }) {
   // Cierre de mes: el ultimo dia del mes y los primeros dias del siguiente; el sobrante incluye la provision de casa que no se uso
   const now = new Date();
   const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const cut = now.getDate() === lastDay ? ym(now) : now.getDate() <= 3 ? addMonthsYm(ym(now), -1) : null;
+  const day = now.getDate();
+  const mCut = day === lastDay ? ym(now) : day <= 3 ? addMonthsYm(ym(now), -1) : null;
+  const quin = d.setting?.data.payPeriod === 'quincena';
+  const qCut = !quin ? null : day >= 15 && day <= 18 ? `${ym(now)}-Q1` : mCut ? `${mCut}-Q2` : null;
+  const cut = quin && cmode === 'q' ? qCut : mCut;
   const cutKey = cut ? `cierre:${cut}` : '';
   const closing = Boolean(cut && b.started && cut >= b.from.slice(0, 7) && !d.bagmoves.some(x => x.data.key === cutKey));
   const sob = libre + b.O;
@@ -25,6 +31,24 @@ export default function BagsCard({ d }: { d: Data }) {
     save('bagmove', { date: today(), amount, note: `Cierre ${cut}`, key: cutKey }, d.me);
     setToSave('');
   };
+
+  // validaciones del esquema
+  const Dtot = d.pat.deudaPropia + d.pat.porPagar;
+  const accMap = new Map(d.allAccounts.map(a => [a.id, a]));
+  const linked = new Set(d.allPlans.map(x => x.data.txnId).filter(Boolean) as string[]);
+  const kinds: Record<string, number> = {};
+  let unk = 0;
+  for (const t of d.allTxns) {
+    if (t.owner !== d.me && t.owner !== null) continue;
+    const k = txnKind(t.data, t.owner, linked, t.id, accMap);
+    if (k) kinds[k] = (kinds[k] ?? 0) + 1; else unk++;
+  }
+  const checks = [
+    { ok: Math.abs(b.cash - b.gastoBag - b.ahorroBag) < 0.5, label: 'Total en cuentas = bolsa de gasto + bolsa de ahorro', detail: `${money(b.cash)} = ${money(b.gastoBag)} + ${money(b.ahorroBag)}` },
+    { ok: Math.abs(b.comprometida + b.sinCobertura - Dtot) < 0.5, label: 'La deuda no se cuenta dos veces', detail: `comprometida ${money(b.comprometida)} + sin cobertura ${money(b.sinCobertura)} = deuda ${money(Dtot)}` },
+    { ok: Math.abs(libre + b.ahorro + b.O + b.A + b.R - b.sinCobertura - d.pat.a) < 1, label: 'Libre + ahorro real + provision + parte ajena + reservado − sin cobertura = patrimonio base', detail: `${money(libre + b.ahorro + b.O + b.A + b.R - b.sinCobertura)} vs ${money(d.pat.a)}` },
+    { ok: unk === 0, label: 'Cada movimiento tiene un tipo claro', detail: unk ? `${unk} sin tipo (revisa que tengan cuenta)` : `${Object.values(kinds).reduce((x, y) => x + y, 0)} movimientos tipificados` }
+  ];
 
   const apply = () => {
     const v = num(amt);
@@ -57,6 +81,7 @@ export default function BagsCard({ d }: { d: Data }) {
           {b.d1.owe > 0.5 && <div className="row"><small>· A personas</small><small>{money(b.d1.owe)}</small></div>}
           {b.d1.cards.map((c, i) => <div key={i} className="row"><small>· {c.name}{c.stmt ? ' (estado)' : ''}</small><small>{money(c.v)}</small></div>)}
           {Math.abs(b.d1.adjust) > 0.5 && <div className="row"><small>· Ajuste</small><small>{money(b.d1.adjust)}</small></div>}
+          {b.R > 0.5 && <div className="row"><small>Nomina para el siguiente periodo</small><b>−{money(b.R)}</b></div>}
           {b.O > 0.5 && <div className="row"><small>Provision de casa</small><b>−{money(b.O)}</b></div>}
           {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><b>−{money(b.A)}</b></div>}
           <div className="row"><b>Libre</b><b className={libre < 0 ? 'neg' : 'pos'}>{money(libre)}</b></div>
@@ -74,8 +99,18 @@ export default function BagsCard({ d }: { d: Data }) {
 
       <Card title="Bolsas">
       {!b.fixed && d.setting && (
-        <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
-          <button className="link" onClick={() => confirm(`Fijar el arranque: bolsa de ahorro inicial de ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
+        <>
+          <small>APERTURA: gasto inicial {money(b.gastoIni)} (parte de gasto de lo recibido del {b.prev.from} al {b.prev.to}); el resto del dinero en cuentas va a ahorro.</small>
+          {b.falta > 0.5 && <small className="neg">Faltan {money(b.falta)} para cubrir deuda inmediata y provision: se moverian desde ahorro a gasto.</small>}
+          <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
+            <button className="link" onClick={() => confirm(`Fijar el arranque: gasto inicial ${money(b.gastoIni + b.falta)}, bolsa de ahorro inicial ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100, gasto: Math.round((b.gastoIni + b.falta) * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
+          </div>
+        </>
+      )}
+      {quin && (
+        <div className="seg" style={{ marginTop: 8 }}>
+          <button className={cmode === 'q' ? 'on' : ''} onClick={() => setCmode('q')}>Cierre de quincena</button>
+          <button className={cmode === 'm' ? 'on' : ''} onClick={() => setCmode('m')}>Cierre de mes</button>
         </div>
       )}
       {closing && (
@@ -108,6 +143,16 @@ export default function BagsCard({ d }: { d: Data }) {
           </div>
           <label className="field"><span>Monto</span><input inputMode="decimal" value={amt} onChange={e => setAmt(e.target.value)} placeholder="0.00" /></label>
           <button className="primary" onClick={apply} disabled={!num(amt)}>Mover</button>
+        </div>
+      )}
+      <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
+        <button className="link" onClick={() => setChk(!chk)}>Validaciones ({checks.filter(c => c.ok).length}/{checks.length})</button>
+      </div>
+      {chk && (
+        <div className="settle">
+          {checks.map((c, i) => <div key={i} className="row-block"><div className="row"><small>{c.ok ? '✓' : '✗'} {c.label}</small></div><small className={c.ok ? '' : 'neg'}>{c.detail}</small></div>)}
+          <small>TIPOS DE MOVIMIENTO</small>
+          {Object.entries(kinds).sort((x, y) => y[1] - x[1]).map(([k, n]) => <div key={k} className="row"><small>{k}</small><small>{n}</small></div>)}
         </div>
       )}
       </Card>

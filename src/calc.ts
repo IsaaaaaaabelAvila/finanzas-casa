@@ -382,6 +382,49 @@ export function incomeToSavings(st: Setting | null, t: Txn) {
   return (t.amount * (t.savePct ?? 0)) / 100;
 }
 
+const dayStr = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+/** Ventana del periodo (mes o quincena) que contiene una fecha. */
+export function periodWindow(date: string, mode: 'month' | 'quincena' | undefined) {
+  const y = +date.slice(0, 4), m = +date.slice(5, 7), d = +date.slice(8, 10);
+  const last = new Date(y, m, 0).getDate();
+  if (mode === 'quincena') return d <= 15 ? { from: dayStr(y, m, 1), to: dayStr(y, m, 15) } : { from: dayStr(y, m, 16), to: dayStr(y, m, last) };
+  return { from: dayStr(y, m, 1), to: dayStr(y, m, last) };
+}
+/** Periodo inmediato anterior al que contiene la fecha. */
+export function prevWindow(date: string, mode: 'month' | 'quincena' | undefined) {
+  const w = periodWindow(date, mode);
+  const dt = new Date(+w.from.slice(0, 4), +w.from.slice(5, 7) - 1, +w.from.slice(8, 10) - 1);
+  return periodWindow(dayStr(dt.getFullYear(), dt.getMonth() + 1, dt.getDate()), mode);
+}
+/** Parte de un ingreso que queda en la bolsa de gasto (nomina: lo que no va a ahorro segun el reparto del mes dado). */
+export function incomeToGasto(st: Setting | null, t: Txn, month: string) {
+  if (t.type !== 'income') return 0;
+  if (t.category === 'Nomina') return (t.amount * (100 - splitAt(st, month + '-01').ahorro)) / 100;
+  if (t.category === 'Reembolso') return t.amount;
+  return (t.amount * (100 - (t.savePct ?? 0))) / 100;
+}
+
+/** Tipo de cada movimiento y que bolsa afecta (null = sin tipo claro). */
+export function txnKind(t: Txn, owner: string | null, linked: Set<string>, id: string, accs: Map<string, Item<Account>>): string | null {
+  const acc = accs.get(t.accountId);
+  switch (t.type) {
+    case 'income': return t.category === 'Nomina' ? 'Nomina (ahorro y gasto; el gasto se reserva al siguiente periodo)' : t.category === 'Reembolso' ? 'Reembolso (a gasto)' : 'Ingreso adicional (su % a ahorro, resto a libre)';
+    case 'expense':
+      if (t.payOf) return 'Pago de deuda (baja deuda y comprometido; libre igual)';
+      if (t.goalId) return 'Compra de meta (cobra a la meta; libre igual)';
+      if (linked.has(id)) return 'Compra a meses (libre baja por la mensualidad inmediata)';
+      if (owner === null) return 'Gasto de casa (consume la provision)';
+      if (!acc) return null;
+      return acc.data.type === 'credit' ? 'Tarjeta, un pago (libre baja hoy)' : 'Debito o efectivo (baja gasto y libre)';
+    case 'transfer': return accs.get(t.toAccountId ?? '')?.data.type === 'credit' ? 'Pago de tarjeta (libre igual)' : 'Traspaso entre cuentas';
+    case 'loan': return 'Prestamo (gasto a por cobrar)';
+    case 'collect': return 'Cobro (por cobrar a cuenta)';
+    case 'payout': return 'Pago a persona (libre igual)';
+    case 'adjust': return 'Ajuste de saldo';
+    default: return null;
+  }
+}
+
 /** Gastos de la casa de un mes que no son a meses (se usa lo capturado a mano en meses sin movimientos; los atipicos no cuentan). */
 export function casaMonthTotal(ctx: BudgetCtx, m: string) {
   const linked = new Set(ctx.plans.map(p => p.data.txnId).filter(Boolean) as string[]);
@@ -453,7 +496,15 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
       if (st.due && !st.paidThisMonth) A += st.monthly;
     }
   }
-  for (const [id, sc] of stmtCards) if (sc.day <= end) { const v = Math.max(0, sc.pending - (cardA[id] ?? 0)); D1 += v; br.cards.push({ name: accById.get(id)?.data.name ?? 'Tarjeta', v, stmt: true }); }
+  const linkedTx = new Set(plans.map(p => p.data.txnId).filter(Boolean) as string[]);
+  for (const [id, sc] of stmtCards) {
+    const acc = accById.get(id);
+    if (sc.day <= end) { const v = Math.max(0, sc.pending - (cardA[id] ?? 0)); D1 += v; br.cards.push({ name: acc?.data.name ?? 'Tarjeta', v, stmt: true }); }
+    // compras de contado despues del corte van al siguiente estado de cuenta, pero el libre baja el dia de la compra
+    const asOf = acc?.data.stmt?.asOf ?? '';
+    const nv = ctx.txns.filter(t => t.owner === ctx.me && t.data.type === 'expense' && t.data.accountId === id && t.data.date > asOf && !t.data.payOf && !t.data.goalId && !t.data.ledgerId && !linkedTx.has(t.id)).reduce((x, t) => x + t.data.amount, 0);
+    if (nv > 0.5) { D1 += nv; br.cards.push({ name: `${acc?.data.name ?? 'Tarjeta'} (compras nuevas)`, v: nv, stmt: false }); }
+  }
   return { D1, A, DM, DMowe, DMby, planRem, end, pct, ajenaLeft, ref, stmtCards, br };
 }
 
@@ -475,7 +526,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c) && !L.stmtCards.has(c.id)).map(c => ({ name: c.data.name, day: c.data.payDay ?? 1, c: Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0)) }));
   const sum = rows.reduce((x, r) => x + r.c, 0);
   const factor = sum > 0 ? Math.max(0, sum - L.ajenaLeft) / sum : 0;
-  for (const r of rows) if (r.day <= L.end) { D1 += r.c * factor; if (r.c * factor > 0.5) L.br.cards.push({ name: r.name, v: r.c * factor, stmt: false }); }
+  for (const r of rows) { D1 += r.c * factor; if (r.c * factor > 0.5) L.br.cards.push({ name: r.name, v: r.c * factor, stmt: false }); }
   const brSum = L.br.own + L.br.casa + L.br.owe + L.br.cards.reduce((x, r) => x + r.v, 0);
   const Dtot = pat.deudaPropia + pat.porPagar;
   D1 = Math.min(D1, Math.max(0, Dtot - L.DM));
@@ -483,16 +534,26 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const D2 = Math.max(0, Dtot - D1 - L.DM);
   const P = pat.a;
   const w = D2 > 0 ? Math.min(1, Math.max(0, 1 + P / D2)) : 1;
-  const S0 = start.ahorro != null ? start.ahorro : Math.max(0, P - O - L.A) + w * D2 + L.DM;
+  const cash = cashTotal(accs, txns, plans, oweLeft);
+  // apertura: el gasto inicial es la parte de gasto de lo que se recibio el periodo anterior al arranque; todo lo demas es ahorro
+  const mode = st?.payPeriod;
+  const prev = prevWindow(start.from, mode);
+  let gastoIni = 0;
+  for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= prev.from && x.data.date <= prev.to) gastoIni += incomeToGasto(st, x.data, start.from.slice(0, 7));
+  const falta = Math.max(0, D1 + O + L.A - gastoIni);
+  const S0 = start.ahorro != null ? start.ahorro : Math.max(0, (t < start.from ? cash : cashBefore(accs, txns, start.from)) - gastoIni - falta);
   let S = S0;
   for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= start.from) S += incomeToSavings(st, x.data);
   for (const x of moves) if (x.owner === me && x.data.date >= start.from) S += x.data.amount;
-  const cash = cashTotal(accs, txns, plans, oweLeft);
   const B2 = Math.min(w * D2, Math.max(0, S - L.DM));
   const ahorro = Math.max(0, Math.min(S - B2 - L.DM, Math.max(0, P)));
   const ahorroBag = Math.min(Math.max(0, cash), ahorro + B2 + L.DM);
   const gastoBag = cash - ahorroBag;
-  const libre = gastoBag - D1 - O - L.A;
+  // la nomina que llega en este periodo financia el siguiente: su parte de gasto se reserva hasta que cambie el periodo
+  const win = periodWindow(ref, mode);
+  let R = 0;
+  for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.category === 'Nomina' && x.data.date >= start.from && x.data.date >= win.from && x.data.date <= win.to) R += incomeToGasto(st, x.data, x.data.date.slice(0, 7));
+  const libre = gastoBag - D1 - O - L.A - R;
   const casaFuture = Math.max(0, pat.porPagarCasa - L.br.casa);
   const otrosFuture = Math.max(0, pat.porPagarPersonas - L.br.owe - L.DMowe);
   const d2 = { casa: Math.min(B2, casaFuture * w), otros: 0, banco: 0 };
@@ -503,7 +564,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   for (const k of new Set([...Object.keys(spent), ...Object.keys(L.DMby)])) held[k] = (spent[k] ?? 0) + (L.DMby[k] ?? 0);
   return {
     cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, D1, D2, A: L.A, O, provision: prov, sinCobertura: D2 - B2,
-    comprometida: D1 + B2 + L.DM, d1: { ...L.br, adjust }, casaFuture, d2, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
+    comprometida: D1 + B2 + L.DM, d1: { ...L.br, adjust }, R, gastoIni, falta, prev, casaFuture, d2, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
     fixed: start.ahorro != null, goalHeld: held, goalPending: L.DMby
   };
 }
