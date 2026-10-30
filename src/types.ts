@@ -14,6 +14,7 @@ export interface Account {
 }
 export type TxnType = 'income' | 'expense' | 'transfer' | 'adjust' | 'loan' | 'collect' | 'payout';  // loan: presto (cuenta -> por cobrar); collect: cobro (por cobrar -> cuenta); payout: pago a una persona (cuenta -> por pagar)
 export interface Txn {
+  atypical?: boolean;   // gasto atipico de la casa: no entra al promedio de la provision
   type: TxnType;
   amount: number;
   date: string;         // YYYY-MM-DD
@@ -81,7 +82,7 @@ export interface CarryCfg { from: string; pos: number; neg: number }  // % del s
 export interface SplitCfg { from: string; ahorro: number; presupuesto: number; reserva: number }  // reparto de la nomina (YYYY-MM)
 export interface BagStart { from: string; ahorro: number | null; gasto: number | null }  // arranque de las bolsas: ahorro = total de la bolsa de ahorro al arrancar (null = vista previa con el patrimonio de hoy)
 export interface BagMove { date: string; amount: number; goalId?: string; note?: string; key?: string }  // movimiento de la bolsa de ahorro (+ entra, - sale)
-export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean; incomeOverrides?: Record<string, number>; carry?: CarryCfg[]; carryDecisions?: Record<string, number>; split?: SplitCfg[]; bagStart?: BagStart; payPeriod?: 'month' | 'quincena' }
+export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean; incomeOverrides?: Record<string, number>; carry?: CarryCfg[]; carryDecisions?: Record<string, number>; split?: SplitCfg[]; bagStart?: BagStart; payPeriod?: 'month' | 'quincena'; casaOverrides?: Record<string, number> }
 export interface Status { person: string; level: 'green' | 'amber' | 'red'; month: string; text: string }
 export interface Item<T> { id: string; owner: string | null; data: T }
 

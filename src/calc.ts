@@ -365,6 +365,21 @@ export function incomeToSavings(st: Setting | null, t: Txn) {
   return (t.amount * (t.savePct ?? 0)) / 100;
 }
 
+/** Gastos de la casa de un mes que no son a meses (se usa lo capturado a mano en meses sin movimientos; los atipicos no cuentan). */
+export function casaMonthTotal(ctx: BudgetCtx, m: string) {
+  const linked = new Set(ctx.plans.map(p => p.data.txnId).filter(Boolean) as string[]);
+  const t = ctx.txns.filter(x => x.owner === null && x.data.type === 'expense' && x.data.date.startsWith(m) && !x.data.payOf && !x.data.atypical && !linked.has(x.id)).reduce((a, x) => a + x.data.amount, 0);
+  return t > 0 ? t : (ctx.setting?.casaOverrides?.[m] ?? 0);
+}
+/** Provision de la casa del mes m: promedio de los 3 meses anteriores (sin mensualidades) por mi porcentaje. Se consume con las compras reales de la casa. */
+export function casaProvision(ctx: BudgetCtx, m: string) {
+  const vals = [1, 2, 3].map(k => casaMonthTotal(ctx, addMonthsYm(m, -k))).filter(v => v > 0);
+  const avg = vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : 0;
+  const mine = avg * casaPct(ctx, m);
+  const spent = monthSpent(ctx, m).casa;
+  return { avg, mine, spent, pending: Math.max(0, mine - spent) };
+}
+
 /**
  * Deuda por capas. Capa 1: lo que vence en lo que resta del periodo (mes o quincena), siempre sale de la bolsa de gasto.
  * Capa 2: el resto de la deuda propia y por pagar. DM: deuda financiada por metas. A: parte ajena de mensualidades aun no reembolsada.
@@ -417,7 +432,9 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const ref = t < start.from ? start.from : t;
   const L = debtLayers(accs, plans, ctx, pat, ref, st?.payPeriod, oweLeft);
   // contado de tarjetas por tarjeta (saldo - mensualidades pendientes), con ajuste por la parte ajena
-  let D1 = L.D1; const O = 0;
+  let D1 = L.D1;
+  const prov = casaProvision(ctx, ref.slice(0, 7));
+  const O = prov.pending;
   const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c)).map(c => ({ day: c.data.payDay ?? 1, c: Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0)) }));
   const sum = rows.reduce((x, r) => x + r.c, 0);
   const factor = sum > 0 ? Math.max(0, sum - L.ajenaLeft) / sum : 0;
@@ -441,7 +458,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const spent = goalSpent(moves, me);
   for (const k of new Set([...Object.keys(spent), ...Object.keys(L.DMby)])) held[k] = (spent[k] ?? 0) + (L.DMby[k] ?? 0);
   return {
-    cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, D1, D2, A: L.A, O, sinCobertura: D2 - B2,
+    cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, D1, D2, A: L.A, O, provision: prov, sinCobertura: D2 - B2,
     comprometida: D1 + B2 + L.DM, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
     fixed: start.ahorro != null, goalHeld: held, goalPending: L.DMby
   };

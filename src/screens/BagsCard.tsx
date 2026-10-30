@@ -28,6 +28,7 @@ export default function BagsCard({ d }: { d: Data }) {
       <div className="row"><span>Patrimonio</span><b className={d.pat.a < 0 ? 'neg' : ''}>{money(d.pat.a)} <small>/ con por cobrar {money(d.pat.b)}</small></b></div>
       <div className="row" style={{ marginTop: 10 }}><span>Bolsa de gasto</span><b>{money(b.gastoBag)}</b></div>
       <div className="row"><small>Comprometido en deuda inmediata</small><small>{money(b.D1)}</small></div>
+      {b.O > 0.5 && <div className="row"><small>Provision de casa pendiente</small><small>{money(b.O)}</small></div>}
       {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><small>{money(b.A)}</small></div>}
       <div className="row"><small>Libre</small><small>{money(b.libre)}</small></div>
       <div className="row" style={{ marginTop: 6 }}><span>Bolsa de ahorro</span><b>{money(b.ahorroBag)}</b></div>
