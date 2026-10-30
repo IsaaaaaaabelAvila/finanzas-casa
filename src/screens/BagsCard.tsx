@@ -64,7 +64,9 @@ export default function BagsCard({ d }: { d: Data }) {
         <Card title="Bolsa de ahorro">
           <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: 8, marginBottom: 6 }}><small>TOTAL</small><div style={{ fontSize: 22, fontWeight: 400, lineHeight: 1.2 }}>{money(b.ahorroBag)}</div></div>
           <div className="row"><small>Comprometido a deuda</small><b>−{money(b.B2)}</b></div>
-          {b.casaFuture * b.w > 0.5 && <div className="row"><small>· Casa (meses futuros)</small><small>{money(Math.min(b.B2, b.casaFuture * b.w))}</small></div>}
+          {b.d2.casa > 0.5 && <div className="row"><small>· Casa (meses futuros)</small><small>{money(b.d2.casa)}</small></div>}
+          {b.d2.otros > 0.5 && <div className="row"><small>· Otros (meses futuros)</small><small>{money(b.d2.otros)}</small></div>}
+          {b.d2.banco > 0.5 && <div className="row"><small>· Banco (tarjetas, resto)</small><small>{money(b.d2.banco)}</small></div>}
           {b.DM > 0.5 && <div className="row"><small>Deuda de metas</small><small>−{money(b.DM)}</small></div>}
           <div className="row"><b>Ahorro real</b><b>{money(b.ahorro)}</b></div>
         </Card>

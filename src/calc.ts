@@ -418,7 +418,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     stmtCards.set(a.id, { pending: pend, day: dm < m ? 0 : Number(s.due.slice(8, 10)) });
   }
   const cardA: Record<string, number> = {};
-  let D1 = 0, A = 0, DM = 0;
+  let D1 = 0, A = 0, DM = 0, DMowe = 0;
   const br = { own: 0, casa: 0, owe: 0, cards: [] as { name: string; v: number; stmt: boolean }[] };
   const DMby: Record<string, number> = {};
   const addDM = (id: string, v: number) => { DM += v; DMby[id] = (DMby[id] ?? 0) + v; };
@@ -446,7 +446,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
   for (const l of ctx.ledger) {
     const st = ledgerStatus(l.data, m);
     if (l.data.dir === 'owe') {
-      if (l.data.goalId) { addDM(l.data.goalId, st.left); continue; }
+      if (l.data.goalId) { addDM(l.data.goalId, st.left); DMowe += st.left; continue; }
       if (l.data.kind === 'installments' && st.due && !st.paidThisMonth) { D1 += st.monthly; br.owe += st.monthly; }
     } else if (l.data.kind === 'installments' && !l.data.dudoso) {
       ajenaLeft += st.left;
@@ -454,7 +454,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     }
   }
   for (const [id, sc] of stmtCards) if (sc.day <= end) { const v = Math.max(0, sc.pending - (cardA[id] ?? 0)); D1 += v; br.cards.push({ name: accById.get(id)?.data.name ?? 'Tarjeta', v, stmt: true }); }
-  return { D1, A, DM, DMby, planRem, end, pct, ajenaLeft, ref, stmtCards, br };
+  return { D1, A, DM, DMowe, DMby, planRem, end, pct, ajenaLeft, ref, stmtCards, br };
 }
 
 /**
@@ -494,12 +494,16 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const gastoBag = cash - ahorroBag;
   const libre = gastoBag - D1 - O - L.A;
   const casaFuture = Math.max(0, pat.porPagarCasa - L.br.casa);
+  const otrosFuture = Math.max(0, pat.porPagarPersonas - L.br.owe - L.DMowe);
+  const d2 = { casa: Math.min(B2, casaFuture * w), otros: 0, banco: 0 };
+  d2.otros = Math.min(B2 - d2.casa, otrosFuture * w);
+  d2.banco = Math.max(0, B2 - d2.casa - d2.otros);
   const held: Record<string, number> = {};
   const spent = goalSpent(moves, me);
   for (const k of new Set([...Object.keys(spent), ...Object.keys(L.DMby)])) held[k] = (spent[k] ?? 0) + (L.DMby[k] ?? 0);
   return {
     cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, D1, D2, A: L.A, O, provision: prov, sinCobertura: D2 - B2,
-    comprometida: D1 + B2 + L.DM, d1: { ...L.br, adjust }, casaFuture, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
+    comprometida: D1 + B2 + L.DM, d1: { ...L.br, adjust }, casaFuture, d2, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
     fixed: start.ahorro != null, goalHeld: held, goalPending: L.DMby
   };
 }
