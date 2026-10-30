@@ -2,6 +2,7 @@ import { Tab } from '../App';
 import { allocateGoals, goalPlan, goalSaved, minSpend, money, planStatus, spendCap, ym, today } from '../calc';
 import { Bar, Card, Data, Empty, Scope } from '../ui';
 import FreeCard, { PartnerMarker } from './FreeCard';
+import BagsCard from './BagsCard';
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 const STATUS_TEXT = {
@@ -30,7 +31,8 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const reminderDay = [5, 6, 0, 1].includes(wd);
   const loggedToday = d.allTxns.some(t => t.owner === d.me && t.data.date === today());
 
-  const goalAlloc = allocateGoals(d.goals, d.total, d.goalCommitted);
+  const goalSpentMap = d.bags ? d.goalSpent : d.goalCommitted;
+  const goalAlloc = allocateGoals(d.goals, d.bags ? d.bags.ahorro : d.total, goalSpentMap);
   const budget = d.setting?.data.monthlyBudget ?? 0;
   const hasPlan = (d.setting?.data.plan?.length ?? 0) > 0;
   const spentAll = d.allTxns.filter(t => t.data.type === 'expense' && !t.data.payOf && t.data.date.startsWith(month)).reduce((a, t) => a + t.data.amount, 0) + d.allPlans.filter(p => p.owner === d.me && !p.data.txnId && p.data.startDate.startsWith(month)).reduce((a, p) => a + p.data.total, 0);
@@ -52,6 +54,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
         <div className="stat"><small>Pagos a meses / mes</small><b>{money(commitments)}</b></div>
       </div>
 
+      {!house && d.bags && <BagsCard d={d} />}
       {!house && hasPlan && <FreeCard d={d} />}
       {!house && <PartnerMarker d={d} />}
 
@@ -89,7 +92,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
 
       {!house && <Card title="Metas" right={<button className="link" onClick={() => go('goals')}>Ver</button>}>
         {d.goals.length === 0 ? <Empty>Aun no tienes metas.</Empty> : d.goals.slice(0, 3).map(g => {
-          const p = goalPlan(g.data.target, goalSaved(g, goalAlloc.alloc, d.goalCommitted), g.data.deadline, now);
+          const p = goalPlan(g.data.target, goalSaved(g, goalAlloc.alloc, goalSpentMap), g.data.deadline, now);
           return (
             <div key={g.id} className="row-block">
               <div className="row"><b>{g.data.name}</b><span>{p.pct.toFixed(0)}%</span></div>

@@ -94,3 +94,6 @@ button.link.danger { color: var(--bad); }
 .statement tr.total td { font-family: var(--serif); font-size: 20px; color: var(--brand); }
 
 .filterbar { margin-bottom: 12px; }
+
+.seg { flex-wrap: wrap; }
+.seg button { min-width: 30%; }

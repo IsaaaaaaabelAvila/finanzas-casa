@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { accountBalance, addMonthsYm, firstPaymentMonth, ledgerStatus, money, monthLabel, planStatus, today, ym } from '../calc';
+import { releaseFromGoal, unrelease } from '../bag';
+import { accountBalance, addMonthsYm, firstPaymentMonth, ledgerStatus, money, monthLabel, planStatus, splitAt, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, INCOME_CATS, Txn, TxnType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -26,6 +27,9 @@ export default function Movements({ d }: { d: Data }) {
   const [goalId, setGoalId] = useState('');
   const [markPlans, setMarkPlans] = useState(true);
   const [filterAcc, setFilterAcc] = useState('');
+  const [savePct, setSavePct] = useState('50');
+  const [loanPerson, setLoanPerson] = useState('');
+  const [collectId, setCollectId] = useState('');
   // al elegir una cuenta de deudas, el egreso es algo que pago otra persona y yo le debo (aparece en "Yo debo")
   const [owedPerson, setOwedPerson] = useState('Iván');
   const [owedMonths, setOwedMonths] = useState('1');
@@ -57,6 +61,8 @@ export default function Movements({ d }: { d: Data }) {
       if (x.type === 'income' && x.accountId === fAcc.id) inn += x.amount;
       if (x.type === 'expense' && x.accountId === fAcc.id) out += x.amount;
       if (x.type === 'adjust' && x.accountId === fAcc.id) adj += x.amount;
+      if ((x.type === 'loan' || x.type === 'payout') && x.accountId === fAcc.id) out += x.amount;
+      if (x.type === 'collect' && x.accountId === fAcc.id) inn += x.amount;
       if (x.type === 'transfer') { if (x.accountId === fAcc.id) out += x.amount; if (x.toAccountId === fAcc.id) inn += x.amount; }
     }
     return { inn, out, adj, balance: accountBalance(fAcc, d.allTxns, d.allPlans, d.oweLeft) };
@@ -64,7 +70,7 @@ export default function Movements({ d }: { d: Data }) {
 
   function resetForm() {
     setEditId(null); setOpen(false); setAmount(''); setNote(''); setCategory(''); setToAccountId(''); setAccountId('');
-    setShared(false); setPayer(''); setDate(today()); setType('expense'); setGoalId('');
+    setShared(false); setPayer(''); setDate(today()); setType('expense'); setGoalId(''); setSavePct('50'); setLoanPerson(''); setCollectId('');
   }
 
   function startEdit(t: (typeof rows)[number]) {
@@ -72,7 +78,7 @@ export default function Movements({ d }: { d: Data }) {
     setType(t.data.type); setAmount(String(t.data.amount)); setDate(t.data.date);
     setAccountId(t.data.accountId); setToAccountId(t.data.toAccountId ?? '');
     setCategory(t.data.type === 'transfer' || t.data.type === 'adjust' ? '' : t.data.category);
-    setNote(t.data.note); setShared(t.owner === null); setPayer(t.data.paidBy ?? ''); setGoalId(t.data.goalId ?? '');
+    setNote(t.data.note); setShared(t.owner === null); setPayer(t.data.paidBy ?? ''); setGoalId(t.data.goalId ?? ''); setSavePct(String(t.data.savePct ?? 50));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -114,6 +120,20 @@ export default function Movements({ d }: { d: Data }) {
     const amt = num(amount);
     const acc = accountId || accs[0]?.id;
     if (!amt || !acc) return;
+    // prestar y cobrar son movimientos entre la cuenta y "por cobrar": ni gasto ni ingreso
+    if (!editId && type === 'loan') {
+      const who = loanPerson.trim() || 'Persona';
+      const lid = save('ledger', { person: who, dir: 'owed', concept: note.trim() || 'Prestamo', kind: 'lump', amount: amt, settled: 0 }, d.me);
+      save('txn', { type: 'loan', amount: amt, date, accountId: acc, category: 'Prestamo', note: `${note.trim() || 'Prestamo'} · ${who}`, ledgerId: lid } as Txn, d.me);
+      resetForm(); return;
+    }
+    if (!editId && type === 'collect') {
+      const item = d.ledger.find(l => l.id === collectId);
+      if (!item) return;
+      save('ledger', { ...item.data, settled: (item.data.settled ?? 0) + amt }, d.me, item.id);
+      save('txn', { type: 'collect', amount: amt, date, accountId: acc, category: 'Cobro', note: `${item.data.concept} · ${item.data.person}`, ledgerId: item.id } as Txn, d.me);
+      resetForm(); return;
+    }
     const t: Txn = {
       type, amount: amt, date, accountId: acc,
       toAccountId: type === 'transfer' ? (toAccountId || accs.find(a => a.id !== acc)?.id) : undefined,
@@ -122,8 +142,13 @@ export default function Movements({ d }: { d: Data }) {
       paidBy: shared ? (payer || d.myKey || d.people[0]?.key || d.me) : undefined,
       goalId: type === 'expense' && goalId ? goalId : undefined
     };
-    save('txn', t, shared ? null : d.me, editId ?? undefined);
-    if (!editId && payInfo && markPlans) for (const x of payInfo.plansDue) save('plan', { ...x.p.data, paid: [...new Set([...(x.p.data.paid ?? []), payMonth])].sort() }, x.p.owner, x.p.id);
+    if (type === 'income' && t.category !== 'Nomina' && t.category !== 'Reembolso') t.savePct = Math.max(0, Math.min(100, num(savePct)));
+    const tid = save('txn', t, shared ? null : d.me, editId ?? undefined);
+    if (t.goalId) releaseFromGoal(d, 'txn:' + tid, t.goalId, amt, t.note || t.category, date); else unrelease(d, 'txn:' + tid);
+    if (!editId && payInfo && markPlans) for (const x of payInfo.plansDue) {
+      save('plan', { ...x.p.data, paid: [...new Set([...(x.p.data.paid ?? []), payMonth])].sort() }, x.p.owner, x.p.id);
+      if (x.p.data.goalId) releaseFromGoal(d, `${x.p.id}:${payMonth}`, x.p.data.goalId, x.st.monthly, x.p.data.description);
+    }
     const linked = editId ? planOf(editId) : undefined;
     if (linked) save('plan', { ...linked.data, total: amt, startDate: date, description: t.note || t.category, category: t.category, accountId: acc }, linked.owner, linked.id);
     resetForm();
@@ -147,7 +172,7 @@ export default function Movements({ d }: { d: Data }) {
         <button onClick={() => setMonth(shiftMonth(month, -1))}>‹</button>
         <b>{month}</b>
         <button onClick={() => setMonth(shiftMonth(month, 1))}>›</button>
-        <button className="primary" onClick={() => (open ? resetForm() : setOpen(true))}>{open ? 'Cerrar' : '+ Nuevo'}</button>
+        <button className="primary" onClick={() => { if (open) resetForm(); else { if (filterAcc) setAccountId(filterAcc); setOpen(true); } }}>{open ? 'Cerrar' : '+ Nuevo'}</button>
       </div>
 
       {toM && (
@@ -190,9 +215,9 @@ export default function Movements({ d }: { d: Data }) {
         <Card title={editId ? 'Editar movimiento' : 'Nuevo movimiento'}>
           {accs.length === 0 && <p className="error">Primero crea una cuenta en la pestana Cuentas.</p>}
           <div className="seg">
-            {(['expense', 'income', 'transfer', 'adjust'] as TxnType[]).map(k => (
+            {(['expense', 'income', 'transfer', 'loan', 'collect', 'adjust'] as TxnType[]).map(k => (
               <button key={k} className={type === k ? 'on' : ''} onClick={() => { setType(k); setCategory(''); }}>
-                {k === 'expense' ? 'Egreso' : k === 'income' ? 'Ingreso' : k === 'transfer' ? 'Transfer. / pago tarjeta' : 'Ajuste'}
+                {k === 'expense' ? 'Egreso' : k === 'income' ? 'Ingreso' : k === 'transfer' ? 'Transfer. / pago tarjeta' : k === 'loan' ? 'Prestamo' : k === 'collect' ? 'Cobro' : 'Ajuste'}
               </button>
             ))}
           </div>
@@ -223,7 +248,7 @@ export default function Movements({ d }: { d: Data }) {
               {payInfo.plansDue.length > 0 && <label className="check"><input type="checkbox" checked={markPlans} onChange={e => setMarkPlans(e.target.checked)} /> Marcar mis mensualidades como pagadas</label>}
             </div>
           )}
-          {type !== 'transfer' && type !== 'adjust' && (
+          {type !== 'transfer' && type !== 'adjust' && type !== 'loan' && type !== 'collect' && (
             <Field label="Categoria">
               <select value={category || cats[cats.length - 1]} onChange={e => setCategory(e.target.value)}>
                 {cats.map(c => <option key={c}>{c}</option>)}
@@ -242,7 +267,26 @@ export default function Movements({ d }: { d: Data }) {
               )}
             </>
           )}
-          {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && <p className="hint">Esta nomina se refleja sola en Casa para calcular el porcentaje (solo se comparte el total del mes).</p>}
+          {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && (() => { const sp = splitAt(d.setting?.data ?? null, date); return <p className="hint">Esta nomina se reparte sola: {sp.ahorro}% ahorro · {sp.presupuesto}% presupuesto · {sp.reserva}% reserva (sin mover dinero). Tambien alimenta el porcentaje de Casa (solo se comparte el total del mes).</p>; })()}
+          {type === 'income' && !shared && (category || cats[cats.length - 1]) !== 'Nomina' && (category || cats[cats.length - 1]) !== 'Reembolso' && (
+            <Field label="% de este ingreso que va a ahorro"><input inputMode="decimal" value={savePct} onChange={e => setSavePct(e.target.value)} /></Field>
+          )}
+          {type === 'loan' && (
+            <>
+              <Field label="¿A quien le prestas?"><input list="personas-loan" value={loanPerson} onChange={e => setLoanPerson(e.target.value)} /></Field>
+              <datalist id="personas-loan">{knownPersons.map(p => <option key={p} value={p} />)}</datalist>
+              <p className="hint">No es un gasto: el dinero pasa de tu cuenta a "Por cobrar".</p>
+            </>
+          )}
+          {type === 'collect' && (
+            <Field label="¿Que te pagan?">
+              <select value={collectId} onChange={e => { setCollectId(e.target.value); const it = d.ledger.find(l => l.id === e.target.value); if (it) setAmount(String(Math.max(0, (it.data.amount ?? 0) - (it.data.settled ?? 0)))); }}>
+                <option value="">— elegir —</option>
+                {d.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'lump' && ledgerStatus(l.data).left > 0).map(l => <option key={l.id} value={l.id}>{l.data.person} · {l.data.concept} ({money(ledgerStatus(l.data).left)})</option>)}
+              </select>
+              <p className="hint">No es un ingreso: baja el "Por cobrar" y sube tu cuenta.</p>
+            </Field>
+          )}
           {useOwed && (
             <>
               <p className="hint">Como la cuenta es "{debtAcc?.data.name}", este egreso es algo que pago otra persona y tu le debes: se suma a esa cuenta y se crea la deuda en "Yo debo". El monto es lo que tu debes.</p>
@@ -266,7 +310,7 @@ export default function Movements({ d }: { d: Data }) {
               </select>
             </Field>
           )}
-          <button className="primary" onClick={submit} disabled={!num(amount) || accs.length === 0}>{editId ? 'Guardar cambios' : 'Guardar'}</button>
+          <button className="primary" onClick={submit} disabled={!num(amount) || accs.length === 0 || (type === 'collect' && !collectId)}>{editId ? 'Guardar cambios' : 'Guardar'}</button>
         </Card>
       )}
 
@@ -279,11 +323,11 @@ export default function Movements({ d }: { d: Data }) {
               {(() => { const pl = planOf(t.id); if (pl) { const st = planStatus(pl.data); return <span className="chip ontrack" style={{ marginTop: 4, display: 'inline-block' }}>A {pl.data.months} meses · {st.paidCount} de {pl.data.months} pagadas · {money(st.monthly)}/mes</span>; } return t.data.type === 'expense' ? <button className="link" style={{ padding: 0, marginTop: 2 }} onClick={() => toPlan(t)}>Pasar este gasto a meses</button> : null; })()}
             </div>
             <div className="tx-r">
-              <b className={t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? 'pos' : t.data.type === 'expense' || t.data.type === 'adjust' ? 'neg' : ''}>
-                {t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0) ? '+' : t.data.type === 'expense' ? '−' : ''}{money(t.data.amount)}
+              <b className={t.data.type === 'income' || t.data.type === 'collect' || (t.data.type === 'adjust' && t.data.amount > 0) ? 'pos' : t.data.type === 'expense' || t.data.type === 'loan' || t.data.type === 'payout' || t.data.type === 'adjust' ? 'neg' : ''}>
+                {t.data.type === 'income' || t.data.type === 'collect' || (t.data.type === 'adjust' && t.data.amount > 0) ? '+' : t.data.type === 'expense' || t.data.type === 'loan' || t.data.type === 'payout' ? '−' : ''}{money(t.data.amount)}
               </b>
               <button className="link" onClick={() => startEdit(t)}>Editar</button>
-              <button className="x" onClick={() => { const pl = planOf(t.id); if (confirm(pl ? '¿Borrar movimiento? Tambien se borra su compra a meses.' : '¿Borrar movimiento?')) { remove(t.id); if (pl) remove(pl.id); } }}>🗑</button>
+              <button className="x" onClick={() => { const pl = planOf(t.id); if (confirm(pl ? '¿Borrar movimiento? Tambien se borra su compra a meses.' : '¿Borrar movimiento?')) { remove(t.id); unrelease(d, 'txn:' + t.id); if (pl) remove(pl.id); } }}>🗑</button>
             </div>
           </div>
         ))}

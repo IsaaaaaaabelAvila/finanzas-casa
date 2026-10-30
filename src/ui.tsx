@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { list, State } from './store';
-import { goalCommitted, oweRemaining, totalFunds } from './calc';
-import type { Account, Goal, Item, LedgerItem, Payroll, People, Person, Plan, Settle, Setting, Status, Txn } from './types';
+import { bagState, goalCommitted, goalSpent, oweRemaining, totalFunds } from './calc';
+import type { Account, BagMove, Goal, Item, LedgerItem, Payroll, People, Person, Plan, Settle, Setting, Status, Txn } from './types';
 
 export type Scope = 'mine' | 'shared' | 'all';
 
@@ -20,6 +20,9 @@ export interface Data {
   extra: number;
   oweLeft: number;
   goalCommitted: Record<string, number>;
+  goalSpent: Record<string, number>;
+  bagmoves: Item<BagMove>[];
+  bags: ReturnType<typeof bagState>;
   people: Person[];
   peopleId: string | null;
   myKey: string | null;
@@ -43,9 +46,11 @@ export function selectData(s: State, scope: Scope): Data {
   const myKey = people.find(p => p.userId === me)?.key ?? null;
   const extra = 0; // el dinero total descuenta toda la deuda; lo que te deben queda fuera
   const oweLeft = oweRemaining(ledger);
+  const bagmoves = list<BagMove>(s, 'bagmove').filter(m => m.owner === me);
   return {
     people, peopleId: peopleRec?.id ?? null,
-    ledger, myKey, extra, oweLeft, goalCommitted: goalCommitted(me, ledger, allPlans, allTxns), statuses: list<Status>(s, 'status'),
+    ledger, myKey, extra, oweLeft, goalCommitted: goalCommitted(me, ledger, allPlans, allTxns),
+    bagmoves, goalSpent: goalSpent(bagmoves, me), bags: bagState(allAccounts, allTxns, allPlans, bagmoves, setting?.data ?? null, me, oweLeft), statuses: list<Status>(s, 'status'),
     payrolls: list<Payroll>(s, 'payroll'), settles: list<Settle>(s, 'settle'),
     me, allAccounts, allTxns, allPlans,
     total: totalFunds(allAccounts, allTxns, allPlans, oweLeft).total + extra,

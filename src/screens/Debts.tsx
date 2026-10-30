@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { addMonthsYm, ledgerStatus, money, monthLabel, today, ym } from '../calc';
 import { remove, save } from '../store';
-import type { LedgerItem } from '../types';
+import { releaseFromGoal, unrelease } from '../bag';
+import type { LedgerItem, Txn } from '../types';
 import { Bar, Card, Data, Empty, Field, num } from '../ui';
 
 type Dir = 'owed' | 'owe';
@@ -50,30 +51,25 @@ export default function Debts({ d }: { d: Data }) {
 
   function toggle(id: string, it: LedgerItem, m: string) {
     const paid = (it.paid ?? []).includes(m);
-    if (dir === 'owe' && !paid) { setPayFor({ id, it, month: m, amount: String(Math.round((it.monthly ?? 0) * 100) / 100) }); return; }
-    if (paid) { const tx = d.allTxns.find(t => t.data.payOf === `${id}:${m}`); if (tx) remove(tx.id); }  // desmarcar borra su movimiento de pago
+    if (!paid) { setPayFor({ id, it, month: m, amount: String(Math.round((it.monthly ?? 0) * 100) / 100) }); return; }
+    if (paid) { const tx = d.allTxns.find(t => t.data.payOf === `${id}:${m}`); if (tx) remove(tx.id); unrelease(d, `${id}:${m}`); }  // desmarcar borra su movimiento de pago
     const s = new Set(it.paid ?? []);
     if (s.has(m)) s.delete(m); else s.add(m);
     save('ledger', { ...it, paid: [...s].sort() }, d.me, id);
   }
-  function settle(id: string, it: LedgerItem) {
-    if (dir === 'owe') { setPayFor({ id, it, amount: '' }); return; }
-    const v = num(prompt('Monto cobrado (usa negativo para aumentar la deuda)') || '0');
-    if (!v) return;
-    save('ledger', { ...it, settled: Math.max(0, (it.settled ?? 0) + v) }, d.me, id);
-  }
+  function settle(id: string, it: LedgerItem) { setPayFor({ id, it, amount: '' }); }
   function confirmPay(register: boolean) {
     if (!payFor) return;
     const { id, it, month: m } = payFor;
     const acc = payAcc || accs[0]?.id;
     const v = num(payFor.amount);
-    if (m) {
-      save('ledger', { ...it, paid: [...new Set([...(it.paid ?? []), m])].sort() }, d.me, id);
-      if (register && acc && v > 0) save('txn', { type: 'expense', amount: v, date: today(), accountId: acc, category: 'Pago de deuda', note: `${it.concept} · ${it.person} (${monthLabel(m)})`, payOf: `${id}:${m}` }, d.me);
-    } else if (v > 0) {
-      save('ledger', { ...it, settled: Math.max(0, (it.settled ?? 0) + v) }, d.me, id);
-      if (register && acc) save('txn', { type: 'expense', amount: v, date: today(), accountId: acc, category: 'Pago de deuda', note: `${it.concept} · ${it.person}`, payOf: `${id}:lump:${Date.now()}` }, d.me);
-    }
+    const owe = dir === 'owe';
+    const key = m ? `${id}:${m}` : `${id}:lump:${Date.now()}`;
+    if (m) save('ledger', { ...it, paid: [...new Set([...(it.paid ?? []), m])].sort() }, d.me, id);
+    else if (v > 0) save('ledger', { ...it, settled: Math.max(0, (it.settled ?? 0) + v) }, d.me, id);
+    // pagar a una persona o cobrarle es un movimiento entre cuenta y por pagar / por cobrar: ni gasto ni ingreso
+    if (register && acc && v > 0) save('txn', { type: owe ? 'payout' : 'collect', amount: v, date: today(), accountId: acc, category: owe ? 'Pago de deuda' : 'Cobro', note: `${it.concept} · ${it.person}${m ? ` (${monthLabel(m)})` : ''}`, payOf: key, goalId: owe ? it.goalId : undefined } as Txn, d.me);
+    if (owe && it.goalId && v > 0) releaseFromGoal(d, key, it.goalId, v, it.concept);
     setPayFor(null);
   }
 
@@ -183,16 +179,16 @@ export default function Debts({ d }: { d: Data }) {
       )}
 
       {payFor && (
-        <Card title="Registrar pago">
+        <Card title={dir === 'owe' ? 'Registrar pago' : 'Registrar cobro'}>
           <p>{payFor.it.concept} · {payFor.it.person}{payFor.month ? ` · ${monthLabel(payFor.month)}` : ''}</p>
           <Field label="Monto"><input inputMode="decimal" value={payFor.amount} onChange={e => setPayFor({ ...payFor, amount: e.target.value })} /></Field>
-          <Field label="¿De que cuenta salio el dinero?">
+          <Field label={dir === 'owe' ? '¿De que cuenta salio el dinero?' : '¿A que cuenta entro el dinero?'}>
             <select value={payAcc || accs[0]?.id || ''} onChange={e => setPayAcc(e.target.value)}>
               {accs.map(a => <option key={a.id} value={a.id}>{a.data.name}</option>)}
             </select>
           </Field>
           <div className="row-actions" style={{ justifyContent: 'flex-start', gap: 8 }}>
-            <button className="primary" onClick={() => confirmPay(true)} disabled={!num(payFor.amount)}>Registrar pago</button>
+            <button className="primary" onClick={() => confirmPay(true)} disabled={!num(payFor.amount)}>{dir === 'owe' ? 'Registrar pago' : 'Registrar cobro'}</button>
             <button onClick={() => confirmPay(false)} disabled={!payFor.month && !num(payFor.amount)}>Solo marcar, sin movimiento</button>
             <button className="link" onClick={() => setPayFor(null)}>Cancelar</button>
           </div>
@@ -217,7 +213,7 @@ export default function Debts({ d }: { d: Data }) {
             {mine.map(({ i, st }) => (
               <div key={i.id} className="debt">
                 <div className="row">
-                  <div><b>{i.data.concept}</b><small>{i.data.kind === 'installments' ? (i.data.card ? `${i.data.card} · ` : '') + `${st.paidCount} de ${i.data.months} pagadas` : i.data.aside ? 'Deuda aparte' : 'Monto unico'}</small></div>
+                  <div><b>{i.data.concept}</b><small>{i.data.kind === 'installments' ? (i.data.card ? `${i.data.card} · ` : '') + `${st.paidCount} de ${i.data.months} pagadas` : `${i.data.dudoso ? 'Dudoso · ' : ''}${i.data.aside ? 'Deuda aparte' : 'Monto unico'}`}</small></div>
                   <div className="tx-r">
                     {i.data.kind === 'installments' ? <b>{money(st.monthly)}</b> : <b>{money(st.left)}</b>}
                   </div>
@@ -236,7 +232,7 @@ export default function Debts({ d }: { d: Data }) {
                   <>
                     <Bar pct={((i.data.settled ?? 0) / ((i.data.amount ?? 1) || 1)) * 100} />
                     <small>{money(i.data.settled ?? 0)} de {money(i.data.amount ?? 0)}</small>
-                    <div className="row-actions"><button className="link" onClick={() => settle(i.id, i.data)}>{dir === 'owed' ? 'Registrar cobro' : 'Registrar pago'}</button></div>
+                    <div className="row-actions"><button className="link" onClick={() => settle(i.id, i.data)}>{dir === 'owed' ? 'Registrar cobro' : 'Registrar pago'}</button>{dir === 'owed' && <button className="link" onClick={() => save('ledger', { ...i.data, dudoso: !i.data.dudoso }, d.me, i.id)}>{i.data.dudoso ? 'Quitar dudoso' : 'Marcar como dudoso'}</button>}</div>
                   </>
                 )}
                 {dir === 'owe' && i.data.goalId && (

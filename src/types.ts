@@ -12,7 +12,7 @@ export interface Account {
   auto?: 'owe';         // saldo = lo que debo en "Yo debo" (se calcula solo)
   feeNote?: string;
 }
-export type TxnType = 'income' | 'expense' | 'transfer' | 'adjust';
+export type TxnType = 'income' | 'expense' | 'transfer' | 'adjust' | 'loan' | 'collect' | 'payout';  // loan: presto (cuenta -> por cobrar); collect: cobro (por cobrar -> cuenta); payout: pago a una persona (cuenta -> por pagar)
 export interface Txn {
   type: TxnType;
   amount: number;
@@ -25,6 +25,7 @@ export interface Txn {
   ledgerId?: string;    // deuda a personas que creo este gasto (se cuenta por mensualidades)
   payOf?: string;       // pago de una deuda (id:mes); no es consumo ni resta del libre
   goalId?: string;      // se paga con el dinero de esta meta; no resta del libre
+  savePct?: number;     // ingreso adicional: % que va a la bolsa de ahorro
 }
 export interface Plan {
   accountId?: string;
@@ -50,7 +51,7 @@ export interface Goal {
   kind?: 'fund' | 'spend';  // fund: fondo que se repone siempre; spend: meta que se gasta y se cierra
   closed?: boolean;     // meta de gasto ya gastada (oculta; sus compras siguen pagadas con ella)
 }
-export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle' | 'ledger' | 'status';
+export type Kind = 'account' | 'txn' | 'plan' | 'goal' | 'setting' | 'people' | 'payroll' | 'settle' | 'ledger' | 'status' | 'bagmove';
 export interface Rec<T = any> {
   id: string;
   kind: Kind;
@@ -73,10 +74,14 @@ export interface LedgerItem {
   amount?: number; settled?: number;  // monto unico y lo ya cobrado/pagado
   aside?: boolean;                // deuda aparte (no se cobra activamente)
   goalId?: string;                // se paga con el dinero de esta meta; no resta del libre
+  dudoso?: boolean;               // por cobrar dudoso: no cuenta en el patrimonio (b)
 }
 export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: number; income?: number }
 export interface CarryCfg { from: string; pos: number; neg: number }  // % del sobrante / faltante que pasa al mes siguiente
-export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean; incomeOverrides?: Record<string, number>; carry?: CarryCfg[]; carryDecisions?: Record<string, number> }
+export interface SplitCfg { from: string; ahorro: number; presupuesto: number; reserva: number }  // reparto de la nomina (YYYY-MM)
+export interface BagStart { from: string; ahorro: number | null; gasto: number | null }  // arranque de las bolsas: uno de los dos es fijo, el otro es el resto
+export interface BagMove { date: string; amount: number; goalId?: string; note?: string; key?: string }  // movimiento de la bolsa de ahorro (+ entra, - sale)
+export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean; incomeOverrides?: Record<string, number>; carry?: CarryCfg[]; carryDecisions?: Record<string, number>; split?: SplitCfg[]; bagStart?: BagStart }
 export interface Status { person: string; level: 'green' | 'amber' | 'red'; month: string; text: string }
 export interface Item<T> { id: string; owner: string | null; data: T }
 

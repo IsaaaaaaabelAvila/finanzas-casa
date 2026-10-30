@@ -1,4 +1,4 @@
-import type { Account, Goal, Item, LedgerItem, Payroll, Person, Plan, Settle, Setting, Txn } from './types';
+import type { Account, BagMove, Goal, Item, LedgerItem, Payroll, Person, Plan, Settle, Setting, Txn } from './types';
 
 export const money = (n: number) =>
   new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 2 }).format(n || 0);
@@ -30,6 +30,8 @@ export function accountBalance(acc: Item<Account>, txns: Item<Txn>[], plans: Ite
     if (x.type === 'income' && x.accountId === acc.id) bal += x.amount;
     if (x.type === 'expense' && x.accountId === acc.id) bal -= x.amount;
     if (x.type === 'adjust' && x.accountId === acc.id) bal += x.amount;
+    if ((x.type === 'loan' || x.type === 'payout') && x.accountId === acc.id) bal -= x.amount;
+    if (x.type === 'collect' && x.accountId === acc.id) bal += x.amount;
     if (x.type === 'transfer') {
       if (x.accountId === acc.id) bal -= x.amount;
       if (x.toAccountId === acc.id) bal += x.amount;
@@ -319,3 +321,84 @@ export const levelText = (l: Level) => l === 'green' ? 'Va bien este mes' : l ==
 /** Lo ahorrado en una meta: lo asignado de tu dinero total (+ lo ya comprometido si es una meta de gasto). */
 export const goalSaved = (g: Item<Goal>, alloc: Record<string, number>, committed: Record<string, number>) =>
   g.data.linkTotal ? Math.min(g.data.target, (alloc[g.id] ?? 0) + (g.data.kind === 'fund' ? 0 : (committed[g.id] ?? 0))) : g.data.saved;
+
+// ---------- Bolsas virtuales (gasto / ahorro) y patrimonio ----------
+const CASH_TYPES = ['debit', 'cash', 'investment'];
+const isCash = (a: Item<Account>) => CASH_TYPES.includes(a.data.type) && inTotal(a) && !a.data.auto;
+const delta = (x: Txn, id: string) => {
+  let v = 0;
+  if (x.accountId === id) {
+    if (x.type === 'income' || x.type === 'adjust' || x.type === 'collect') v += x.amount;
+    else if (x.type === 'expense' || x.type === 'transfer' || x.type === 'loan' || x.type === 'payout') v -= x.amount;
+  }
+  if (x.type === 'transfer' && x.toAccountId === id) v += x.amount;
+  return v;
+};
+
+/** Dinero en cuentas hoy (debito, efectivo e inversion que cuentan en el total). */
+export function cashTotal(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[], oweLeft = 0) {
+  return accs.filter(isCash).reduce((s, a) => s + accountBalance(a, txns, plans, oweLeft), 0);
+}
+/** Dinero en cuentas antes de una fecha (para el arranque de las bolsas). */
+export function cashBefore(accs: Item<Account>[], txns: Item<Txn>[], date: string) {
+  let total = 0;
+  for (const a of accs.filter(isCash)) {
+    let bal = a.data.initial;
+    for (const t of txns) if (t.data.date < date) bal += delta(t.data, a.id);
+    total += bal;
+  }
+  return total;
+}
+
+/** Reparto de la nomina vigente en una fecha (por defecto 50% ahorro, 40% presupuesto, 10% reserva). */
+export const splitAt = (st: Setting | null, date: string) => {
+  const m = date.slice(0, 7);
+  const arr = (st?.split ?? []).filter(c => c.from <= m);
+  return arr.length ? arr[arr.length - 1] : { from: '', ahorro: 50, presupuesto: 40, reserva: 10 };
+};
+
+/** Parte de un ingreso que va a la bolsa de ahorro: la nomina usa el reparto; un ingreso adicional, su propio %. */
+export function incomeToSavings(st: Setting | null, t: Txn) {
+  if (t.type !== 'income') return 0;
+  if (t.category === 'Nomina') return (t.amount * splitAt(st, t.date).ahorro) / 100;
+  if (t.category === 'Reembolso') return 0;
+  return (t.amount * (t.savePct ?? 0)) / 100;
+}
+
+/** Las dos bolsas. El ahorro arranca en el monto elegido (o el resto del dinero) y crece con cada ingreso; el gasto es lo demas. */
+export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[], moves: Item<BagMove>[], st: Setting | null, me: string, oweLeft = 0) {
+  const start = st?.bagStart;
+  if (!start) return null;
+  const cashStart = cashBefore(accs, txns, start.from);
+  const ahorroStart = start.ahorro != null ? start.ahorro : cashStart - (start.gasto ?? 0);
+  let ahorro = ahorroStart;
+  for (const t of txns) if (t.owner === me && t.data.type === 'income' && t.data.date >= start.from) ahorro += incomeToSavings(st, t.data);
+  for (const m of moves) if (m.owner === me && m.data.date >= start.from) ahorro += m.data.amount;
+  const cash = cashTotal(accs, txns, plans, oweLeft);
+  return { cash, ahorro, gasto: cash - ahorro, cashStart, ahorroStart, from: start.from, started: today() >= start.from };
+}
+
+/** Lo gastado de cada meta (salidas de la bolsa de ahorro respaldadas por la meta). */
+export function goalSpent(moves: Item<BagMove>[], me: string) {
+  const out: Record<string, number> = {};
+  for (const m of moves) if (m.owner === me && m.data.goalId && m.data.amount < 0) out[m.data.goalId] = (out[m.data.goalId] ?? 0) - m.data.amount;
+  return out;
+}
+
+/** Patrimonio: (a) cuentas - deuda propia - por pagar; (b) (a) + por cobrar (sin dudosos). Memo: deuda con bancos y cuanto es ajena. */
+export function patrimonio(accs: Item<Account>[], ctx: BudgetCtx, txns: Item<Txn>[], plans: Item<Plan>[], oweLeft = 0) {
+  const cuentas = cashTotal(accs, txns, plans, oweLeft);
+  const tarjetas = accs.filter(a => a.data.type === 'credit' && inTotal(a)).reduce((s, a) => s - accountBalance(a, txns, plans, oweLeft), 0);
+  const pct = casaPct(ctx, ym(new Date()));
+  const house = plans.filter(p => p.owner === null);
+  const housePay = house.filter(p => p.data.paidBy === ctx.myKey).reduce((s, p) => s + planStatus(p.data).remainingAmount, 0);   // yo soy el titular
+  const houseOwe = house.filter(p => p.data.paidBy !== ctx.myKey).reduce((s, p) => s + planStatus(p.data).remainingAmount, 0);  // el titular es otro
+  const ajenaLedger = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'installments' && !l.data.dudoso).reduce((s, l) => s + ledgerStatus(l.data).left, 0);
+  const casaAjena = housePay * (1 - pct);
+  const ajena = ajenaLedger + casaAjena;
+  const deudaPropia = tarjetas - ajena;
+  const porPagar = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((s, l) => s + ledgerStatus(l.data).left, 0) + houseOwe * pct;
+  const porCobrar = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'lump' && !l.data.dudoso && !l.data.aside).reduce((s, l) => s + ledgerStatus(l.data).left, 0);
+  const a = cuentas - deudaPropia - porPagar;
+  return { cuentas, tarjetas, ajena, deudaPropia, porPagar, porCobrar, a, b: a + porCobrar };
+}

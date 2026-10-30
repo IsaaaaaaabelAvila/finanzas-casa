@@ -13,8 +13,10 @@ export default function Goals({ d }: { d: Data }) {
   const set = (k: keyof typeof f, v: any) => setF(p => ({ ...p, [k]: v }));
 
   const sorted = [...d.goals].sort((a, b) => (a.data.order ?? 1e9) - (b.data.order ?? 1e9));
-  const al = allocateGoals(d.goals, d.total, d.goalCommitted);
-  const progress = (g: (typeof d.goals)[number]) => goalSaved(g, al.alloc, d.goalCommitted);
+  const base = d.bags ? d.bags.ahorro : d.total;
+  const spent = d.bags ? d.goalSpent : d.goalCommitted;
+  const al = allocateGoals(d.goals, base, spent);
+  const progress = (g: (typeof d.goals)[number]) => goalSaved(g, al.alloc, spent);
   const targetSum = al.linked.reduce((a, g) => a + g.data.target, 0);
   const allocSum = al.linked.reduce((a, g) => a + progress(g), 0);
 
@@ -78,8 +80,8 @@ export default function Goals({ d }: { d: Data }) {
 
       {al.linked.length > 0 && (
         <Card className="total">
-          <small>DINERO TOTAL REPARTIDO EN TUS METAS</small>
-          <div className="big">{money(d.total)}</div>
+          <small>{d.bags ? 'BOLSA DE AHORRO REPARTIDA EN TUS METAS' : 'DINERO TOTAL REPARTIDO EN TUS METAS'}</small>
+          <div className="big">{money(base)}</div>
           <Bar pct={targetSum > 0 ? (allocSum / targetSum) * 100 : 0} tone={allocSum >= targetSum ? 'good' : 'warn'} />
           <div className="row"><small>Asignado a metas</small><span>{money(allocSum)} de {money(targetSum)} ({targetSum > 0 ? ((allocSum / targetSum) * 100).toFixed(0) : 0}%)</span></div>
           <div className="row"><small>Sin asignar</small><span>{money(al.unassigned)}</span></div>
@@ -103,7 +105,7 @@ export default function Goals({ d }: { d: Data }) {
             </div>
             <Bar pct={p.pct} tone={p.pct >= 100 ? 'good' : 'warn'} />
             <div className="row"><span>{money(savedNow)} de {money(g.data.target)}</span><b>{p.pct.toFixed(0)}%</b></div>
-            {(d.goalCommitted[g.id] ?? 0) > 0 && (g.data.kind === 'fund' ? <small>Pagado con este fondo: {money(d.goalCommitted[g.id])} (hay que reponerlo)</small> : <small>Ya comprometido en esta meta: {money(d.goalCommitted[g.id])} · ahorrado: {money(al.alloc[g.id] ?? 0)}</small>)}
+            {(spent[g.id] ?? 0) > 0 && (g.data.kind === 'fund' ? <small>Pagado con este fondo: {money(spent[g.id])} (hay que reponerlo)</small> : <small>{d.bags ? 'Gastado de esta meta' : 'Ya comprometido en esta meta'}: {money(spent[g.id])} · ahorrado: {money(al.alloc[g.id] ?? 0)}</small>)}
             <small>
               {p.left === 0 ? '¡Meta completa!' : <>Te faltan <b>{money(p.left)}</b>{p.perMonth !== null && <> · {p.monthsLeft} meses → <b>{money(p.perMonth)}/mes</b></>}</>}
             </small>

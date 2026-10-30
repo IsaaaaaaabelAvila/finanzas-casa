@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { accountBalance, inTotal, minSpend, money, totalFunds } from '../calc';
+import { budgetCtx } from '../budget';
+import { accountBalance, inTotal, minSpend, money, patrimonio, totalFunds } from '../calc';
 import { remove, save } from '../store';
 import { Account, AccountType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -74,6 +75,23 @@ export default function Accounts({ d }: { d: Data }) {
             <div className="row"><small>Tarjetas de credito (deuda)</small><span className={t.cards < 0 ? 'neg' : ''}>{money(t.cards)}</span></div>
             {d.extra !== 0 && <div className="row"><small>Por cobrar y compras a meses pendientes</small><span>{money(d.extra)}</span></div>}
             {t.outside !== 0 && <div className="row"><small>Fuera del total</small><span>{money(t.outside)}</span></div>}
+          </Card>
+        );
+      })()}
+
+      {(() => {
+        const pt = patrimonio(d.allAccounts, budgetCtx(d), d.allTxns, d.allPlans, d.oweLeft);
+        return (
+          <Card title="Patrimonio">
+            <small>PATRIMONIO BASE (A)</small>
+            <div className="big" style={{ color: pt.a >= 0 ? 'var(--good)' : 'var(--bad)' }}>{money(pt.a)}</div>
+            {pt.a < 0 && <small>Te faltan {money(-pt.a)} para pasar a positivo</small>}
+            <div className="row"><small>Cuentas (debito, efectivo, inversion)</small><span>{money(pt.cuentas)}</span></div>
+            <div className="row"><small>Deuda propia con bancos</small><span className="neg">−{money(pt.deudaPropia)}</span></div>
+            <div className="row"><small>Por pagar a personas</small><span className="neg">−{money(pt.porPagar)}</span></div>
+            <div className="row"><small>Por cobrar (sin dudosos)</small><span>{money(pt.porCobrar)}</span></div>
+            <div className="row"><small>Patrimonio con por cobrar (B)</small><b className={pt.b >= 0 ? 'pos' : 'neg'}>{money(pt.b)}</b></div>
+            <small>Memo: deuda total con bancos {money(pt.tarjetas)}; de ella, ajena (cubierta por terceros) {money(pt.ajena)}</small>
           </Card>
         );
       })()}

@@ -3,7 +3,7 @@ import { cloudEnabled } from '../supabase';
 import { getState, save, setState, useStore } from '../store';
 import { syncNow } from '../sync';
 import { getNotifSettings, isNative, requestPermission, saveNotifSettings } from '../notifications';
-import { cfgAt, ym } from '../calc';
+import { cfgAt, splitAt, ym } from '../calc';
 import { Card, Data, num } from '../ui';
 
 export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSignOut: () => void; onLocalSetup: () => void }) {
@@ -19,6 +19,21 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
   const prevStart = (() => { const [y, mo] = (d.setting?.data.startMonth ?? '2026-11').split('-').map(Number); return ym(new Date(y, mo - 2, 1)); })();
   const [prevIncome, setPrevIncome] = useState(d.setting?.data.incomeOverrides?.[prevStart] !== undefined ? String(d.setting!.data.incomeOverrides![prevStart]) : '');
   const [from, setFrom] = useState(cur < startMonth ? startMonth : cur);
+  const splitNow = splitAt(d.setting?.data ?? null, cur);
+  const [sAhorro, setSAhorro] = useState(String(splitNow.ahorro));
+  const [sPres, setSPres] = useState(String(splitNow.presupuesto));
+  const [sRes, setSRes] = useState(String(splitNow.reserva));
+  const [sFrom, setSFrom] = useState(cur);
+
+  function saveSplit() {
+    const a = num(sAhorro), p = num(sPres), r = num(sRes);
+    if (Math.abs(a + p + r - 100) > 0.01) { setMsg('El reparto debe sumar 100%'); return; }
+    const base = d.setting?.data ?? {};
+    const f = sFrom < cur ? cur : sFrom;
+    const split = [...(base.split ?? []).filter(c => c.from !== f), { from: f, ahorro: a, presupuesto: p, reserva: r }].sort((x, y) => x.from.localeCompare(y.from));
+    save('setting', { ...base, split }, d.me, d.setting?.id);
+    setMsg(`Reparto guardado: aplica a las nominas desde ${f}; las anteriores no cambian.`);
+  }
 
   function saveCfg() {
     const base = d.setting?.data ?? {};
@@ -89,6 +104,21 @@ export default function Settings({ d, onSignOut, onLocalSetup }: { d: Data; onSi
         )}
         <label className="check" style={{ marginTop: 12 }}><input type="checkbox" checked={Boolean(d.setting?.data.shareStatus)} onChange={e => save('setting', { ...(d.setting?.data ?? {}), shareStatus: e.target.checked }, d.me, d.setting?.id)} />
           Compartir mi semaforo con mi pareja (solo ve verde, ambar o rojo, sin numeros)</label>
+      </Card>
+
+      <Card title="Reparto de la nomina">
+        <p className="hint">Cada nomina que registres se reparte sola, sin mover dinero: una parte a la bolsa de ahorro, otra a presupuesto y otra a reserva de imprevistos (estas dos quedan en la bolsa de gasto).</p>
+        <div className="row" style={{ gap: 8 }}>
+          <label className="field" style={{ flex: 1 }}><span>Ahorro %</span><input inputMode="decimal" value={sAhorro} onChange={e => setSAhorro(e.target.value)} /></label>
+          <label className="field" style={{ flex: 1 }}><span>Presupuesto %</span><input inputMode="decimal" value={sPres} onChange={e => setSPres(e.target.value)} /></label>
+          <label className="field" style={{ flex: 1 }}><span>Reserva %</span><input inputMode="decimal" value={sRes} onChange={e => setSRes(e.target.value)} /></label>
+        </div>
+        <label className="field"><span>Aplicar desde el mes</span><input type="month" min={cur} value={sFrom} onChange={e => setSFrom(e.target.value)} /></label>
+        <button onClick={saveSplit}>Guardar reparto</button>
+        {(d.setting?.data.split?.length ?? 0) > 0 && (
+          <p className="hint">Historial: {(d.setting?.data.split ?? []).map(c => `${c.from}: ${c.ahorro}/${c.presupuesto}/${c.reserva}`).join(' · ')}</p>
+        )}
+        {msg && <p className="hint">{msg}</p>}
       </Card>
 
       <Card title="Recordatorios">

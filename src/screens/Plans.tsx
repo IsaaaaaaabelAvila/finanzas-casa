@@ -4,6 +4,7 @@ import { remove, save } from '../store';
 import { EXPENSE_CATS, Plan } from '../types';
 import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
 import Debts from './Debts';
+import { releaseFromGoal, unrelease } from '../bag';
 import Commitments from './Commitments';
 
 function PlansList({ d }: { d: Data }) {
@@ -50,6 +51,7 @@ function PlansList({ d }: { d: Data }) {
     const set = new Set(p.paid ?? []);
     if (set.has(m)) set.delete(m); else set.add(m);
     save('plan', { ...p, paid: [...set].sort() }, owner, id);
+    if (p.goalId) { if (set.has(m)) releaseFromGoal(d, `${id}:${m}`, p.goalId, p.total / p.months, p.description); else unrelease(d, `${id}:${m}`); }
   }
 
   return (
