@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { list, State } from './store';
-import { bagState, goalCommitted, goalSpent, oweRemaining, totalFunds } from './calc';
+import { bagState, goalCommitted, goalSpent, oweRemaining, patrimonio, totalFunds } from './calc';
 import type { Account, BagMove, Goal, Item, LedgerItem, Payroll, People, Person, Plan, Settle, Setting, Status, Txn } from './types';
 
 export type Scope = 'mine' | 'shared' | 'all';
@@ -23,6 +23,7 @@ export interface Data {
   goalSpent: Record<string, number>;
   bagmoves: Item<BagMove>[];
   bags: ReturnType<typeof bagState>;
+  pat: ReturnType<typeof patrimonio>;
   people: Person[];
   peopleId: string | null;
   myKey: string | null;
@@ -47,10 +48,11 @@ export function selectData(s: State, scope: Scope): Data {
   const extra = 0; // el dinero total descuenta toda la deuda; lo que te deben queda fuera
   const oweLeft = oweRemaining(ledger);
   const bagmoves = list<BagMove>(s, 'bagmove').filter(m => m.owner === me);
+  const pat = patrimonio(allAccounts, { me, myKey, txns: allTxns, plans: allPlans, ledger, people, payrolls: list<Payroll>(s, 'payroll'), setting: setting?.data ?? null }, allTxns, allPlans, oweLeft);
   return {
     people, peopleId: peopleRec?.id ?? null,
     ledger, myKey, extra, oweLeft, goalCommitted: goalCommitted(me, ledger, allPlans, allTxns),
-    bagmoves, goalSpent: goalSpent(bagmoves, me), bags: bagState(allAccounts, allTxns, allPlans, bagmoves, setting?.data ?? null, me, oweLeft), statuses: list<Status>(s, 'status'),
+    bagmoves, goalSpent: goalSpent(bagmoves, me), pat, bags: bagState(allAccounts, allTxns, allPlans, bagmoves, setting?.data ?? null, me, oweLeft, pat.a), statuses: list<Status>(s, 'status'),
     payrolls: list<Payroll>(s, 'payroll'), settles: list<Settle>(s, 'settle'),
     me, allAccounts, allTxns, allPlans,
     total: totalFunds(allAccounts, allTxns, allPlans, oweLeft).total + extra,

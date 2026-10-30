@@ -21,9 +21,12 @@ export default function BagsCard({ d }: { d: Data }) {
   return (
     <Card title="Bolsas">
       {!b.started && <small>EL ESQUEMA ARRANCA EL {b.from} · ASI SE VERIA HOY</small>}
-      <div className="row" style={{ marginTop: 6 }}><span>Bolsa de gasto</span><b className={b.gasto < 0 ? 'neg' : ''}>{money(b.gasto)}</b></div>
+      <div className="row" style={{ marginTop: 6 }}><span>Bolsa de gasto</span><b>{money(b.gasto)}</b></div>
       <div className="row"><span>Bolsa de ahorro</span><b>{money(b.ahorro)}</b></div>
+      <div className="row"><small>Patrimonio (gasto + ahorro)</small><small className={b.patrimonio < 0 ? 'neg' : ''}>{money(b.patrimonio)}</small></div>
       <div className="row"><small>Dinero en cuentas</small><small>{money(b.cash)}</small></div>
+      <div className="row"><small>De ese dinero, respalda lo que debes</small><small>{money(b.respaldo)}</small></div>
+      {b.capped && <small>El ahorro no puede superar tu patrimonio: lo que falta se repone con tus siguientes ingresos.</small>}
       <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
         <button className="link" onClick={() => setOpen(!open)}>Mover entre bolsas</button>
       </div>

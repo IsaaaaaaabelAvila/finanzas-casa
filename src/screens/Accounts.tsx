@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { budgetCtx } from '../budget';
-import { accountBalance, inTotal, minSpend, money, patrimonio, totalFunds } from '../calc';
+import { accountBalance, inTotal, minSpend, money, totalFunds } from '../calc';
 import { remove, save } from '../store';
 import { Account, AccountType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -80,7 +79,7 @@ export default function Accounts({ d }: { d: Data }) {
       })()}
 
       {(() => {
-        const pt = patrimonio(d.allAccounts, budgetCtx(d), d.allTxns, d.allPlans, d.oweLeft);
+        const pt = d.pat;
         return (
           <Card title="Patrimonio">
             <small>PATRIMONIO BASE (A)</small>

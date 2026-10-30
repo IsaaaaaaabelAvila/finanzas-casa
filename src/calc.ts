@@ -365,17 +365,22 @@ export function incomeToSavings(st: Setting | null, t: Txn) {
   return (t.amount * (t.savePct ?? 0)) / 100;
 }
 
-/** Las dos bolsas. El ahorro arranca en el monto elegido (o el resto del dinero) y crece con cada ingreso; el gasto es lo demas. */
-export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[], moves: Item<BagMove>[], st: Setting | null, me: string, oweLeft = 0) {
+/**
+ * Las dos bolsas. El ahorro "nominal" arranca en el monto elegido (o el patrimonio menos el gasto inicial) y crece con cada ingreso;
+ * pero el ahorro real nunca supera el patrimonio base (a), y el gasto es lo que queda del patrimonio. Asi gasto + ahorro = patrimonio.
+ * Lo que sobra del dinero en cuentas es el respaldo de las deudas.
+ */
+export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<Plan>[], moves: Item<BagMove>[], st: Setting | null, me: string, oweLeft: number, a: number) {
   const start = st?.bagStart;
   if (!start) return null;
-  const cashStart = cashBefore(accs, txns, start.from);
-  const ahorroStart = start.ahorro != null ? start.ahorro : cashStart - (start.gasto ?? 0);
-  let ahorro = ahorroStart;
-  for (const t of txns) if (t.owner === me && t.data.type === 'income' && t.data.date >= start.from) ahorro += incomeToSavings(st, t.data);
-  for (const m of moves) if (m.owner === me && m.data.date >= start.from) ahorro += m.data.amount;
+  const ahorroStart = start.ahorro != null ? start.ahorro : a - (start.gasto ?? 0);
+  let nominal = ahorroStart;
+  for (const t of txns) if (t.owner === me && t.data.type === 'income' && t.data.date >= start.from) nominal += incomeToSavings(st, t.data);
+  for (const m of moves) if (m.owner === me && m.data.date >= start.from) nominal += m.data.amount;
   const cash = cashTotal(accs, txns, plans, oweLeft);
-  return { cash, ahorro, gasto: cash - ahorro, cashStart, ahorroStart, from: start.from, started: today() >= start.from };
+  const ahorro = Math.min(nominal, Math.max(0, a));
+  const gasto = Math.max(0, a - nominal);
+  return { cash, ahorro, gasto, respaldo: cash - ahorro - gasto, patrimonio: a, nominal, ahorroStart, from: start.from, started: today() >= start.from, capped: nominal > Math.max(0, a) };
 }
 
 /** Lo gastado de cada meta (salidas de la bolsa de ahorro respaldadas por la meta). */
