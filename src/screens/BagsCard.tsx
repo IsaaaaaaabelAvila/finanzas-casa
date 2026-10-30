@@ -11,6 +11,7 @@ export default function BagsCard({ d }: { d: Data }) {
   const [dir, setDir] = useState<1 | -1>(1);
   const [toSave, setToSave] = useState('');
   if (!b) return null;
+  const libre = Math.abs(b.libre) < 0.005 ? 0 : b.libre;
   const grid = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 } as const;
 
   // Cierre de mes: el ultimo dia del mes y los primeros dias del siguiente; el sobrante incluye la provision de casa que no se uso
@@ -19,7 +20,7 @@ export default function BagsCard({ d }: { d: Data }) {
   const cut = now.getDate() === lastDay ? ym(now) : now.getDate() <= 3 ? addMonthsYm(ym(now), -1) : null;
   const cutKey = cut ? `cierre:${cut}` : '';
   const closing = Boolean(cut && b.started && cut >= b.from.slice(0, 7) && !d.bagmoves.some(x => x.data.key === cutKey));
-  const sob = b.libre + b.O;
+  const sob = libre + b.O;
   const close = (amount: number) => {
     save('bagmove', { date: today(), amount, note: `Cierre ${cut}`, key: cutKey }, d.me);
     setToSave('');
@@ -37,8 +38,8 @@ export default function BagsCard({ d }: { d: Data }) {
       {!b.started && <small>EL ESQUEMA ARRANCA EL {b.from} · ASI SE VERIA HOY</small>}
       <Card className="total">
         <small>LIBRE PARA GASTAR</small>
-        <div className="big" style={{ color: b.libre >= 0 ? 'var(--good)' : 'var(--bad)' }}>{money(b.libre)}</div>
-        {b.libre < 0 && <small>Faltante</small>}
+        <div className="big" style={{ color: libre >= 0 ? 'var(--good)' : 'var(--bad)' }}>{money(libre)}</div>
+        {libre < 0 && <small>Faltante</small>}
         <div className="row" style={{ marginTop: 10 }}><span>Deuda comprometida</span><b>{money(b.comprometida)}</b></div>
         <div className="row"><small>· Banco (deuda personal)</small><small>{money(d.pat.deudaPropia)}</small></div>
         <div className="row"><small>· Otros (personas)</small><small>{money(d.pat.porPagarPersonas)}</small></div>
@@ -56,9 +57,9 @@ export default function BagsCard({ d }: { d: Data }) {
           {b.d1.owe > 0.5 && <div className="row"><small>· A personas</small><small>{money(b.d1.owe)}</small></div>}
           {b.d1.cards.map((c, i) => <div key={i} className="row"><small>· {c.name}{c.stmt ? ' (estado)' : ''}</small><small>{money(c.v)}</small></div>)}
           {Math.abs(b.d1.adjust) > 0.5 && <div className="row"><small>· Ajuste</small><small>{money(b.d1.adjust)}</small></div>}
-          {b.O > 0.5 && <div className="row"><small>Provision de casa</small><small>−{money(b.O)}</small></div>}
-          {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><small>−{money(b.A)}</small></div>}
-          <div className="row"><b>Libre</b><b className={b.libre < 0 ? 'neg' : 'pos'}>{money(b.libre)}</b></div>
+          {b.O > 0.5 && <div className="row"><small>Provision de casa</small><b>−{money(b.O)}</b></div>}
+          {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><b>−{money(b.A)}</b></div>}
+          <div className="row"><b>Libre</b><b className={libre < 0 ? 'neg' : 'pos'}>{money(libre)}</b></div>
         </Card>
         <Card title="Bolsa de ahorro">
           <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: 8, marginBottom: 6 }}><small>TOTAL</small><div style={{ fontSize: 22, fontWeight: 400, lineHeight: 1.2 }}>{money(b.ahorroBag)}</div></div>
@@ -72,7 +73,7 @@ export default function BagsCard({ d }: { d: Data }) {
       <Card title="Bolsas">
       {!b.fixed && d.setting && (
         <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
-          <button className="link" onClick={() => confirm(`Fijar el arranque: bolsa de ahorro inicial de ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(b.libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
+          <button className="link" onClick={() => confirm(`Fijar el arranque: bolsa de ahorro inicial de ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
         </div>
       )}
       {closing && (
