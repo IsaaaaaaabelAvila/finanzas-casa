@@ -462,6 +462,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
   }
   const norm = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const cardA: Record<string, number> = {};
+  const ajenaByCard: Record<string, number> = {};  // mensualidades que otros me deben, por tarjeta (estan dentro del saldo de esa tarjeta)
   let D1 = 0, A = 0, DM = 0, DMowe = 0;
   const br = { own: 0, casa: 0, owe: 0, cards: [] as { name: string; v: number; stmt: boolean }[] };
   const DMby: Record<string, number> = {};
@@ -494,11 +495,12 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
       if (l.data.kind === 'installments' && st.due && !st.paidThisMonth) { D1 += st.monthly; br.owe += st.monthly; }
     } else if (l.data.kind === 'installments' && !l.data.dudoso) {
       ajenaLeft += st.left;
+      const cn = norm(l.data.card ?? '');
+      const cid = cn ? accs.find(x => x.owner === ctx.me && x.data.type === 'credit' && norm(x.data.name) === cn)?.id : undefined;
+      if (cid) ajenaByCard[cid] = (ajenaByCard[cid] ?? 0) + st.left;
       if (st.due && !st.paidThisMonth) {
         A += st.monthly;
         // si su tarjeta tiene estado de cuenta, esa parte ya viene dentro del estado: se quita de ahi para no contarla dos veces
-        const cn = norm(l.data.card ?? '');
-        const cid = cn ? accs.find(x => x.owner === ctx.me && x.data.type === 'credit' && norm(x.data.name) === cn)?.id : undefined;
         if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly;
       }
     }
@@ -512,7 +514,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     const nv = ctx.txns.filter(t => t.owner === ctx.me && t.data.type === 'expense' && t.data.accountId === id && t.data.date >= asOf && !t.data.payOf && !t.data.goalId && !t.data.ledgerId && !linkedTx.has(t.id)).reduce((x, t) => x + t.data.amount, 0);
     if (nv > 0.5) { D1 += nv; br.cards.push({ name: `${acc?.data.name ?? 'Tarjeta'} (compras nuevas)`, v: nv, stmt: false }); }
   }
-  return { D1, A, DM, DMowe, DMby, planRem, end, pct, ajenaLeft, ref, stmtCards, br };
+  return { D1, A, DM, DMowe, DMby, planRem, end, pct, ajenaLeft, ajenaByCard, ref, stmtCards, br };
 }
 
 /**
@@ -530,10 +532,19 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   let D1 = L.D1;
   const prov = casaProvision(ctx, ref.slice(0, 7));
   const O = prov.pending;
-  const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c) && !L.stmtCards.has(c.id)).map(c => ({ name: c.data.name, day: c.data.payDay ?? 1, c: Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0)) }));
-  const sum = rows.reduce((x, r) => x + r.c, 0);
-  const factor = sum > 0 ? Math.max(0, sum - L.ajenaLeft) / sum : 0;
-  for (const r of rows) { D1 += r.c * factor; if (r.c * factor > 0.5) L.br.cards.push({ name: r.name, v: r.c * factor, stmt: false }); }
+  // sin estado de cuenta ni pagos registrados, el saldo inicial se da por pagado: lo que se paga es lo cargado desde el ultimo corte
+  const linkedTx = new Set(plans.map(p => p.data.txnId).filter(Boolean) as string[]);
+  const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c) && !L.stmtCards.has(c.id)).map(c => {
+    let v = Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0) - (L.ajenaByCard[c.id] ?? 0));
+    const noPay = !txns.some(t => t.data.type === 'transfer' && t.data.toAccountId === c.id);
+    if (noPay && c.owner === me && c.data.cutDay) {
+      const from = period(c.data.cutDay, parse(ref)).start;
+      const cyc = txns.filter(t => t.owner === me && t.data.type === 'expense' && t.data.accountId === c.id && t.data.date >= from && !t.data.payOf && !t.data.goalId && !t.data.ledgerId && !linkedTx.has(t.id)).reduce((x, t) => x + t.data.amount, 0);
+      v = Math.min(v, cyc);
+    }
+    return { name: c.data.name, day: c.data.payDay ?? 1, c: v };
+  });
+  for (const r of rows) { D1 += r.c; if (r.c > 0.5) L.br.cards.push({ name: r.name, v: r.c, stmt: false }); }
   const brSum = L.br.own + L.br.casa + L.br.owe + L.br.cards.reduce((x, r) => x + r.v, 0);
   const Dtot = pat.deudaPropia + pat.porPagar;
   D1 = Math.min(D1, Math.max(0, Dtot - L.DM));
