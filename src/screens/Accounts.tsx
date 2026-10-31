@@ -77,21 +77,22 @@ export default function Accounts({ d }: { d: Data }) {
             <div className="big" style={{ color: pt.a >= 0 ? 'var(--good)' : 'var(--bad)', fontSize: 40, lineHeight: 1.1 }}>{money(pt.a)}</div>
             {pt.a < 0 && <small>Te faltan {money(-pt.a)} para pasar a positivo</small>}
             <div className="row"><small>Cuentas (debito, efectivo, inversion)</small><span>{money(pt.cuentas)}</span></div>
-            <div className="row"><small>Deuda propia con bancos</small><span className="neg">−{money(pt.deudaPropia)}</span></div>
-            <div className="row"><small>Por pagar (personas y casa)</small><span className="neg">−{money(pt.porPagar)}</span></div>
-            <div className="row"><small>· A personas (compras que pagaron por ti)</small><span className="neg">−{money(pt.porPagarPersonas)}</span></div>
-            {pt.houseOweTotal > 0.5 && <div className="row"><small>· De la casa (tu {(pt.housePct * 100).toFixed(1)}% de {money(pt.houseOweTotal)} que falta)</small><span className="neg">−{money(pt.porPagarCasa)}</span></div>}
-            <div className="row"><small>Por cobrar, pagos unicos (sin dudosos)</small><span>{money(pt.porCobrar)}</span></div>
+            <div className="row"><small>Deuda total en tarjetas</small><span className="neg">−{money(pt.tarjetas)}</span></div>
             {pt.ajena > 0.5 && (
               <>
-                <div className="row"><small>Mensualidades que pagas por otros (ya restadas de tu deuda con bancos)</small><span>{money(pt.ajena)}</span></div>
+                <div className="row"><small>Menos: mensualidades que pagas por otros (te las reembolsan)</small><span>+{money(pt.ajena)}</span></div>
                 {pt.ajenaLedger > 0.5 && <div className="row"><small>· Personas</small><small>{money(pt.ajenaLedger)}</small></div>}
                 {pt.casaAjena > 0.5 && <div className="row"><small>· Casa (la parte de los demas en lo que tu pagas)</small><small>{money(pt.casaAjena)}</small></div>}
                 {pt.ajenaPlanes > 0.5 && <div className="row"><small>· Compras con otros responsables</small><small>{money(pt.ajenaPlanes)}</small></div>}
               </>
             )}
+            <div className="row"><small>Deuda propia con bancos</small><span className="neg">−{money(pt.deudaPropia)}</span></div>
+            <div className="row"><small>Por pagar (personas y casa)</small><span className="neg">−{money(pt.porPagar)}</span></div>
+            <div className="row"><small>· A personas (compras que pagaron por ti)</small><span className="neg">−{money(pt.porPagarPersonas)}</span></div>
+            {pt.houseOweTotal > 0.5 && <div className="row"><small>· De la casa (tu {(pt.housePct * 100).toFixed(1)}% de {money(pt.houseOweTotal)} que falta)</small><span className="neg">−{money(pt.porPagarCasa)}</span></div>}
+            <div className="row"><small>Por cobrar, pagos unicos (sin dudosos)</small><span>{money(pt.porCobrar)}</span></div>
             <div className="row"><small>Patrimonio con por cobrar (B)</small><b className={pt.b >= 0 ? 'pos' : 'neg'}>{money(pt.b)}</b></div>
-            <small>Memo: deuda total con bancos {money(pt.tarjetas)}; de ella, ajena (cubierta por terceros) {money(pt.ajena)}</small>
+            {pt.ajena > 0.5 && <small>Las mensualidades que pagas por otros ya estan restadas de tu deuda, por eso no se suman otra vez en (B).</small>}
           </Card>
         );
       })()}
