@@ -557,7 +557,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const S0 = start.ahorro != null ? start.ahorro : Math.max(0, (t < start.from ? cash : cashBefore(accs, txns, start.from)) - gastoIni - falta);
   let S = S0;
   for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= start.from) S += incomeToSavings(st, x.data);
-  for (const x of moves) if (x.owner === me && x.data.date >= start.from && !x.data.res) S += x.data.amount;
+  for (const x of moves) if (x.owner === me && (x.data.date >= start.from || start.ahorro == null) && !x.data.res) S += x.data.amount;  // antes del arranque, mientras no este fijado, los movimientos ajustan la apertura
   const B2 = Math.min(w * D2, Math.max(0, S - L.DM));
   const ahorro = Math.max(0, Math.min(S - B2 - L.DM, Math.max(0, P)));
   const ahorroBag = Math.min(Math.max(0, cash), ahorro + B2 + L.DM);

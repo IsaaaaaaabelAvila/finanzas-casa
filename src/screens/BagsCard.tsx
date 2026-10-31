@@ -64,7 +64,13 @@ export default function BagsCard({ d }: { d: Data }) {
   const apply = () => {
     const v = num(amt);
     if (!v) return;
-    save('bagmove', { date: today(), amount: dir * Math.abs(v), note: dir === 1 ? 'De gasto a ahorro' : 'De ahorro a gasto' }, d.me);
+    const amount = dir * Math.abs(v);
+    if (!b.started && b.fixed && d.setting?.data.bagStart) {
+      // arranque ya fijado y aun no empieza: el movimiento ajusta el ahorro con que abre
+      save('setting', { ...d.setting.data, bagStart: { ...d.setting.data.bagStart, ahorro: Math.round((d.setting.data.bagStart.ahorro! + amount) * 100) / 100 } }, d.me, d.setting.id);
+    } else {
+      save('bagmove', { date: today(), amount, note: dir === 1 ? 'De gasto a ahorro' : 'De ahorro a gasto' }, d.me);
+    }
     setAmt(''); setOpen(false);
   };
 
@@ -116,7 +122,7 @@ export default function BagsCard({ d }: { d: Data }) {
           <small>APERTURA: gasto inicial {money(b.gastoIni)} (parte de gasto de lo recibido del {b.prev.from} al {b.prev.to}); el resto del dinero en cuentas va a ahorro.</small>
           {b.falta > 0.5 && <small className="neg">Faltan {money(b.falta)} para cubrir deuda inmediata y provision: se moverian desde ahorro a gasto.</small>}
           <div className="row-actions" style={{ justifyContent: 'flex-start' }}>
-            <button className="link" onClick={() => confirm(`Fijar el arranque: gasto inicial ${money(b.gastoIni + b.falta)}, bolsa de ahorro inicial ${money(b.S0)} (ahorro real ${money(b.ahorro)}, libre ${money(libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S0 * 100) / 100, gasto: Math.round((b.gastoIni + b.falta) * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S0)})</button>
+            <button className="link" onClick={() => confirm(`Fijar el arranque: gasto inicial ${money(b.gastoIni + b.falta)}, bolsa de ahorro inicial ${money(b.S)} (ahorro real ${money(b.ahorro)}, libre ${money(libre)}). ¿Guardar?`) && save('setting', { ...d.setting!.data, bagStart: { ...d.setting!.data.bagStart!, ahorro: Math.round(b.S * 100) / 100, gasto: Math.round((b.gastoIni + b.falta) * 100) / 100 } }, d.me, d.setting!.id)}>Fijar arranque ({money(b.S)})</button>
           </div>
         </>
       )}
