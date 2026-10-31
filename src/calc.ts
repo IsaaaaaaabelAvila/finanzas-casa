@@ -460,6 +460,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     if (pend <= 0.5 || dm > m) continue;
     stmtCards.set(a.id, { pending: pend, day: dm < m ? 0 : Number(s.due.slice(8, 10)) });
   }
+  const norm = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const cardA: Record<string, number> = {};
   let D1 = 0, A = 0, DM = 0, DMowe = 0;
   const br = { own: 0, casa: 0, owe: 0, cards: [] as { name: string; v: number; stmt: boolean }[] };
@@ -493,7 +494,13 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
       if (l.data.kind === 'installments' && st.due && !st.paidThisMonth) { D1 += st.monthly; br.owe += st.monthly; }
     } else if (l.data.kind === 'installments' && !l.data.dudoso) {
       ajenaLeft += st.left;
-      if (st.due && !st.paidThisMonth) A += st.monthly;
+      if (st.due && !st.paidThisMonth) {
+        A += st.monthly;
+        // si su tarjeta tiene estado de cuenta, esa parte ya viene dentro del estado: se quita de ahi para no contarla dos veces
+        const cn = norm(l.data.card ?? '');
+        const cid = cn ? accs.find(x => x.owner === ctx.me && x.data.type === 'credit' && norm(x.data.name) === cn)?.id : undefined;
+        if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly;
+      }
     }
   }
   const linkedTx = new Set(plans.map(p => p.data.txnId).filter(Boolean) as string[]);
