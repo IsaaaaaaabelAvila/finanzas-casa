@@ -10,6 +10,7 @@ export default function BagsCard({ d }: { d: Data }) {
   const [amt, setAmt] = useState('');
   const [dir, setDir] = useState<1 | -1>(1);
   const [toSave, setToSave] = useState('');
+  const [resSave, setResSave] = useState('');
   const [cmode, setCmode] = useState<'q' | 'm'>('q');
   const [chk, setChk] = useState(false);
   if (!b) return null;
@@ -28,8 +29,18 @@ export default function BagsCard({ d }: { d: Data }) {
   const closing = Boolean(cut && b.started && cut >= b.from.slice(0, 7) && !d.bagmoves.some(x => x.data.key === cutKey));
   const sob = libre + b.O;
   const close = (amount: number) => {
+    // la reserva que se uso sola para cubrir el faltante queda registrada
+    if (b.resUse > 0.5) save('bagmove', { date: today(), amount: -Math.round(b.resUse * 100) / 100, res: true, note: `Reserva usada ${cut}`, key: `${cutKey}:res` }, d.me);
     save('bagmove', { date: today(), amount, note: `Cierre ${cut}`, key: cutKey }, d.me);
     setToSave('');
+  };
+  const resToAhorro = () => {
+    const v = Math.min(b.RES, Math.abs(num(resSave)));
+    if (v <= 0.005) return;
+    const r = Math.round(v * 100) / 100;
+    save('bagmove', { date: today(), amount: -r, res: true, note: `Reserva a ahorro ${cut}` }, d.me);
+    save('bagmove', { date: today(), amount: r, note: `Reserva a ahorro ${cut}` }, d.me);
+    setResSave('');
   };
 
   // validaciones del esquema
@@ -46,7 +57,7 @@ export default function BagsCard({ d }: { d: Data }) {
   const checks = [
     { ok: Math.abs(b.cash - b.gastoBag - b.ahorroBag) < 0.5, label: 'Total en cuentas = bolsa de gasto + bolsa de ahorro', detail: `${money(b.cash)} = ${money(b.gastoBag)} + ${money(b.ahorroBag)}` },
     { ok: Math.abs(b.comprometida + b.sinCobertura - Dtot) < 0.5, label: 'La deuda no se cuenta dos veces', detail: `comprometida ${money(b.comprometida)} + sin cobertura ${money(b.sinCobertura)} = deuda ${money(Dtot)}` },
-    { ok: Math.abs(libre + b.ahorro + b.O + b.A + b.R - b.sinCobertura - d.pat.a) < 1, label: 'Libre + ahorro real + provision + parte ajena + reservado − sin cobertura = patrimonio base', detail: `${money(libre + b.ahorro + b.O + b.A + b.R - b.sinCobertura)} vs ${money(d.pat.a)}` },
+    { ok: Math.abs(libre + b.ahorro + b.O + b.A + b.R + b.RES - b.sinCobertura - d.pat.a) < 1, label: 'Libre + ahorro real + provision + parte ajena + reservado + reserva − sin cobertura = patrimonio base', detail: `${money(libre + b.ahorro + b.O + b.A + b.R + b.RES - b.sinCobertura)} vs ${money(d.pat.a)}` },
     { ok: unk === 0, label: 'Cada movimiento tiene un tipo claro', detail: unk ? `${unk} sin tipo (revisa que tengan cuenta)` : `${Object.values(kinds).reduce((x, y) => x + y, 0)} movimientos tipificados` }
   ];
 
@@ -82,6 +93,8 @@ export default function BagsCard({ d }: { d: Data }) {
           {b.d1.cards.map((c, i) => <div key={i} className="row"><small>· {c.name}{c.stmt ? ' (estado)' : ''}</small><small>{money(c.v)}</small></div>)}
           {Math.abs(b.d1.adjust) > 0.5 && <div className="row"><small>· Ajuste</small><small>{money(b.d1.adjust)}</small></div>}
           {b.R > 0.5 && <div className="row"><small>Nomina para el siguiente periodo</small><b>−{money(b.R)}</b></div>}
+          {(b.RES > 0.5 || b.resUse > 0.5) && <div className="row"><small>Reserva acumulada</small><b>−{money(b.RES)}</b></div>}
+          {b.resUse > 0.5 && <div className="row"><small>· Ya usada para cubrir el faltante</small><small>{money(b.resUse)}</small></div>}
           {b.O > 0.5 && <div className="row"><small>Provision de casa</small><b>−{money(b.O)}</b></div>}
           {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><b>−{money(b.A)}</b></div>}
           <div className="row last"><b>Libre</b><b className={libre < 0 ? 'neg' : 'pos'}>{money(libre)}</b></div>
@@ -117,6 +130,15 @@ export default function BagsCard({ d }: { d: Data }) {
         <div className="settle">
           <small>CIERRE DE {cut}</small>
           <div className="row"><span>{sob >= 0 ? 'Sobrante' : 'Faltante'}</span><b className={sob < 0 ? 'neg' : 'pos'}>{money(sob)}</b></div>
+          {b.RES > 0.5 && (
+            <>
+              <div className="row"><span>Reserva acumulada</span><b>{money(b.RES)}</b></div>
+              <label className="field"><span>Pasar reserva a ahorro (lo demas se queda para el mes siguiente)</span><input inputMode="decimal" value={resSave} onChange={e => setResSave(e.target.value)} placeholder="0.00" /></label>
+              <div className="row-actions" style={{ justifyContent: 'flex-start', gap: 8 }}>
+                <button onClick={resToAhorro} disabled={!num(resSave)}>Pasar reserva a ahorro</button>
+              </div>
+            </>
+          )}
           {sob >= 0 ? (
             <>
               <label className="field"><span>Pasar a ahorro (lo demas se arrastra al mes siguiente)</span><input inputMode="decimal" value={toSave} onChange={e => setToSave(e.target.value)} placeholder="0.00" /></label>

@@ -84,7 +84,7 @@ export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: numb
 export interface CarryCfg { from: string; pos: number; neg: number }  // % del sobrante / faltante que pasa al mes siguiente
 export interface SplitCfg { from: string; ahorro: number; presupuesto: number; reserva: number }  // reparto de la nomina (YYYY-MM)
 export interface BagStart { from: string; ahorro: number | null; gasto: number | null }  // arranque de las bolsas: ahorro = total de la bolsa de ahorro al arrancar (null = vista previa con el patrimonio de hoy)
-export interface BagMove { date: string; amount: number; goalId?: string; note?: string; key?: string }  // movimiento de la bolsa de ahorro (+ entra, - sale)
+export interface BagMove { date: string; amount: number; goalId?: string; note?: string; key?: string; res?: boolean }  // movimiento de la bolsa de ahorro (+ entra, - sale)
 export interface Setting { monthlyBudget?: number; includeReceivables?: boolean; startMonth?: string; plan?: PlanCfg[]; shareStatus?: boolean; incomeOverrides?: Record<string, number>; carry?: CarryCfg[]; carryDecisions?: Record<string, number>; split?: SplitCfg[]; bagStart?: BagStart; payPeriod?: 'month' | 'quincena'; casaOverrides?: Record<string, number> }
 export interface Status { person: string; level: 'green' | 'amber' | 'red'; month: string; text: string }
 export interface Item<T> { id: string; owner: string | null; data: T }

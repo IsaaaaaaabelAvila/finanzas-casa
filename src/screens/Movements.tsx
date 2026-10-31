@@ -267,7 +267,7 @@ export default function Movements({ d }: { d: Data }) {
               )}
             </>
           )}
-          {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && (() => { const sp = splitAt(d.setting?.data ?? null, date); return <p className="hint">Esta nomina se reparte sola: {sp.ahorro}% ahorro · {sp.presupuesto}% presupuesto · {sp.reserva}% reserva (sin mover dinero). Tambien alimenta el porcentaje de Casa (solo se comparte el total del mes).</p>; })()}
+          {type === 'income' && (category || cats[cats.length - 1]) === 'Nomina' && !shared && (() => { const sp = splitAt(d.setting?.data ?? null, date); return <p className="hint">Esta nomina se reparte sola: {sp.ahorro}% ahorro · {sp.presupuesto}% presupuesto · {sp.reserva}% reserva (la reserva se aparta, no entra al libre y se usa sola si el libre llega a $0). Tambien alimenta el porcentaje de Casa (solo se comparte el total del mes).</p>; })()}
           {type === 'income' && !shared && (category || cats[cats.length - 1]) !== 'Nomina' && (category || cats[cats.length - 1]) !== 'Reembolso' && (
             <Field label="% de este ingreso que va a ahorro"><input inputMode="decimal" value={savePct} onChange={e => setSavePct(e.target.value)} /></Field>
           )}

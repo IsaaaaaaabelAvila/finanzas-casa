@@ -382,6 +382,12 @@ export function incomeToSavings(st: Setting | null, t: Txn) {
   return (t.amount * (t.savePct ?? 0)) / 100;
 }
 
+/** Parte de una nomina que se aparta como reserva (se desbloquea el mes siguiente, pero no entra al libre). */
+export function incomeToReserva(st: Setting | null, t: Txn) {
+  if (t.type !== 'income' || t.category !== 'Nomina') return 0;
+  return (t.amount * splitAt(st, t.date).reserva) / 100;
+}
+
 const dayStr = (y: number, m: number, d: number) => `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 /** Ventana del periodo (mes o quincena) que contiene una fecha. */
 export function periodWindow(date: string, mode: 'month' | 'quincena' | undefined) {
@@ -551,7 +557,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const S0 = start.ahorro != null ? start.ahorro : Math.max(0, (t < start.from ? cash : cashBefore(accs, txns, start.from)) - gastoIni - falta);
   let S = S0;
   for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= start.from) S += incomeToSavings(st, x.data);
-  for (const x of moves) if (x.owner === me && x.data.date >= start.from) S += x.data.amount;
+  for (const x of moves) if (x.owner === me && x.data.date >= start.from && !x.data.res) S += x.data.amount;
   const B2 = Math.min(w * D2, Math.max(0, S - L.DM));
   const ahorro = Math.max(0, Math.min(S - B2 - L.DM, Math.max(0, P)));
   const ahorroBag = Math.min(Math.max(0, cash), ahorro + B2 + L.DM);
@@ -560,7 +566,15 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const win = periodWindow(ref, mode);
   let R = 0;
   for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.category === 'Nomina' && x.data.date >= start.from && x.data.date >= win.from && x.data.date <= win.to) R += incomeToGasto(st, x.data, x.data.date.slice(0, 7));
-  const libre = gastoBag - D1 - O - L.A - R;
+  // reserva: la de nominas de meses anteriores (desde el arranque) sigue apartada y no entra al libre; si el libre quedaria negativo, se usa sola
+  let resAvail = 0;
+  for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.category === 'Nomina' && x.data.date >= start.from && x.data.date < win.from) resAvail += incomeToReserva(st, x.data);
+  for (const x of moves) if (x.owner === me && x.data.res && x.data.date >= start.from) resAvail += x.data.amount;
+  resAvail = Math.max(0, resAvail);
+  const libreRaw = gastoBag - D1 - O - L.A - R - resAvail;
+  const resUse = libreRaw < 0 ? Math.min(resAvail, -libreRaw) : 0;
+  const libre = libreRaw + resUse;
+  const RES = resAvail - resUse;
   const casaFuture = Math.max(0, pat.porPagarCasa - L.br.casa);
   const otrosFuture = Math.max(0, pat.porPagarPersonas - L.br.owe - L.DMowe);
   const d2 = { casa: Math.min(B2, casaFuture * w), otros: 0, banco: 0 };
@@ -571,7 +585,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   for (const k of new Set([...Object.keys(spent), ...Object.keys(L.DMby)])) held[k] = (spent[k] ?? 0) + (L.DMby[k] ?? 0);
   return {
     cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, D1, D2, A: L.A, O, provision: prov, sinCobertura: D2 - B2,
-    comprometida: D1 + B2 + L.DM, d1: { ...L.br, adjust }, R, gastoIni, falta, prev, casaFuture, d2, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
+    comprometida: D1 + B2 + L.DM, d1: { ...L.br, adjust }, R, RES, resUse, gastoIni, falta, prev, casaFuture, d2, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
     fixed: start.ahorro != null, goalHeld: held, goalPending: L.DMby
   };
 }
