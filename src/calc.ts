@@ -532,18 +532,7 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   let D1 = L.D1;
   const prov = casaProvision(ctx, ref.slice(0, 7));
   const O = prov.pending;
-  // sin estado de cuenta ni pagos registrados, el saldo inicial se da por pagado: lo que se paga es lo cargado desde el ultimo corte
-  const linkedTx = new Set(plans.map(p => p.data.txnId).filter(Boolean) as string[]);
-  const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c) && !L.stmtCards.has(c.id)).map(c => {
-    let v = Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0) - (L.ajenaByCard[c.id] ?? 0));
-    const noPay = !txns.some(t => t.data.type === 'transfer' && t.data.toAccountId === c.id);
-    if (noPay && c.owner === me && c.data.cutDay) {
-      const from = period(c.data.cutDay, parse(ref)).start;
-      const cyc = txns.filter(t => t.owner === me && t.data.type === 'expense' && t.data.accountId === c.id && t.data.date >= from && !t.data.payOf && !t.data.goalId && !t.data.ledgerId && !linkedTx.has(t.id)).reduce((x, t) => x + t.data.amount, 0);
-      v = Math.min(v, cyc);
-    }
-    return { name: c.data.name, day: c.data.payDay ?? 1, c: v };
-  });
+  const rows = accs.filter(c => c.data.type === 'credit' && inTotal(c) && !L.stmtCards.has(c.id)).map(c => ({ name: c.data.name, day: c.data.payDay ?? 1, c: Math.max(0, -accountBalance(c, txns, plans, oweLeft) - (L.planRem[c.id] ?? 0) - (L.ajenaByCard[c.id] ?? 0)) }));
   for (const r of rows) { D1 += r.c; if (r.c > 0.5) L.br.cards.push({ name: r.name, v: r.c, stmt: false }); }
   const brSum = L.br.own + L.br.casa + L.br.owe + L.br.cards.reduce((x, r) => x + r.v, 0);
   const Dtot = pat.deudaPropia + pat.porPagar;
