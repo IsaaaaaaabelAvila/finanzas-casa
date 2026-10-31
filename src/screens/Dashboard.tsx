@@ -19,10 +19,12 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const monthTx = d.txns.filter(t => t.data.date.startsWith(month) && !t.data.payOf);
   const income = monthTx.filter(t => t.data.type === 'income').reduce((a, t) => a + t.data.amount, 0);
   const planBuys = d.plans.filter(p => p.owner === d.me && !p.data.txnId && p.data.startDate.startsWith(month));
-  const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount, 0) + planBuys.reduce((a, p) => a + p.data.total, 0);
+  // en Todo, de cada gasto de la casa solo cuenta tu parte; en Casa se ve completo
+  const w = (t: { owner: string | null }) => (scope === 'all' && t.owner === null ? d.pat.housePct : 1);
+  const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount * w(t), 0) + planBuys.reduce((a, p) => a + p.data.total, 0);
 
   const byCat: Record<string, number> = {};
-  monthTx.filter(t => t.data.type === 'expense').forEach(t => { byCat[t.data.category] = (byCat[t.data.category] || 0) + t.data.amount; });
+  monthTx.filter(t => t.data.type === 'expense').forEach(t => { byCat[t.data.category] = (byCat[t.data.category] || 0) + t.data.amount * w(t); });
   planBuys.forEach(p => { const c = p.data.category ?? 'Compras'; byCat[c] = (byCat[c] || 0) + p.data.total; });
   const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
 
