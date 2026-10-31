@@ -502,7 +502,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     if (sc.day <= end) { const v = Math.max(0, sc.pending - (cardA[id] ?? 0)); D1 += v; br.cards.push({ name: acc?.data.name ?? 'Tarjeta', v, stmt: true }); }
     // compras de contado despues del corte van al siguiente estado de cuenta, pero el libre baja el dia de la compra
     const asOf = acc?.data.stmt?.asOf ?? '';
-    const nv = ctx.txns.filter(t => t.owner === ctx.me && t.data.type === 'expense' && t.data.accountId === id && t.data.date > asOf && !t.data.payOf && !t.data.goalId && !t.data.ledgerId && !linkedTx.has(t.id)).reduce((x, t) => x + t.data.amount, 0);
+    const nv = ctx.txns.filter(t => t.owner === ctx.me && t.data.type === 'expense' && t.data.accountId === id && t.data.date >= asOf && !t.data.payOf && !t.data.goalId && !t.data.ledgerId && !linkedTx.has(t.id)).reduce((x, t) => x + t.data.amount, 0);
     if (nv > 0.5) { D1 += nv; br.cards.push({ name: `${acc?.data.name ?? 'Tarjeta'} (compras nuevas)`, v: nv, stmt: false }); }
   }
   return { D1, A, DM, DMowe, DMby, planRem, end, pct, ajenaLeft, ref, stmtCards, br };
