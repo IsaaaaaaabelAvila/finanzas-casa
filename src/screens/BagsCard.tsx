@@ -72,8 +72,8 @@ export default function BagsCard({ d }: { d: Data }) {
         <div className="row"><span>Ahorro real</span><b>{money(b.ahorro)}</b></div>
       </Card>
 
-      <div style={{ ...grid, alignItems: 'start' }}>
-        <Card title="Bolsa de gasto">
+      <div style={{ ...grid, alignItems: 'stretch' }}>
+        <Card title="Bolsa de gasto" className="bagcol">
           <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: 8, marginBottom: 6 }}><small>TOTAL</small><div style={{ fontSize: 22, fontWeight: 400, lineHeight: 1.2 }}>{money(b.gastoBag)}</div></div>
           <div className="row"><small>Deuda inmediata</small><b>−{money(b.D1)}</b></div>
           {b.d1.own > 0.5 && <div className="row"><small>· Mensualidades</small><small>{money(b.d1.own)}</small></div>}
@@ -84,16 +84,16 @@ export default function BagsCard({ d }: { d: Data }) {
           {b.R > 0.5 && <div className="row"><small>Nomina para el siguiente periodo</small><b>−{money(b.R)}</b></div>}
           {b.O > 0.5 && <div className="row"><small>Provision de casa</small><b>−{money(b.O)}</b></div>}
           {b.A > 0.5 && <div className="row"><small>Parte ajena por reembolsar</small><b>−{money(b.A)}</b></div>}
-          <div className="row"><b>Libre</b><b className={libre < 0 ? 'neg' : 'pos'}>{money(libre)}</b></div>
+          <div className="row last"><b>Libre</b><b className={libre < 0 ? 'neg' : 'pos'}>{money(libre)}</b></div>
         </Card>
-        <Card title="Bolsa de ahorro">
+        <Card title="Bolsa de ahorro" className="bagcol">
           <div style={{ borderBottom: '1px solid var(--line)', paddingBottom: 8, marginBottom: 6 }}><small>TOTAL</small><div style={{ fontSize: 22, fontWeight: 400, lineHeight: 1.2 }}>{money(b.ahorroBag)}</div></div>
           <div className="row"><small>Comprometido a deuda</small><b>−{money(b.B2)}</b></div>
           {b.d2.casa > 0.5 && <div className="row"><small>· Casa (meses futuros)</small><small>{money(b.d2.casa)}</small></div>}
           {b.d2.otros > 0.5 && <div className="row"><small>· Otros (meses futuros)</small><small>{money(b.d2.otros)}</small></div>}
           {b.d2.banco > 0.5 && <div className="row"><small>· Banco (tarjetas, resto)</small><small>{money(b.d2.banco)}</small></div>}
           {b.DM > 0.5 && <div className="row"><small>Deuda de metas</small><small>−{money(b.DM)}</small></div>}
-          <div className="row"><b>Ahorro real</b><b>{money(b.ahorro)}</b></div>
+          <div className="row last"><b>Ahorro real</b><b>{money(b.ahorro)}</b></div>
         </Card>
       </div>
 

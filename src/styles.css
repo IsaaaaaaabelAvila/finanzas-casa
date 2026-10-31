@@ -98,3 +98,5 @@ button.link.danger { color: var(--bad); }
 
 .seg { flex-wrap: wrap; }
 .seg button { min-width: 30%; }
+.card.bagcol{display:flex;flex-direction:column}
+.card.bagcol .last{margin-top:auto;padding-top:8px;border-top:1px solid var(--line)}
