@@ -78,6 +78,7 @@ export interface LedgerItem {
   amount?: number; settled?: number;  // monto unico y lo ya cobrado/pagado
   aside?: boolean;                // deuda aparte (no se cobra activamente)
   goalId?: string;                // se paga con el dinero de esta meta; no resta del libre
+  payShift?: number;              // meses entre el estado de cuenta y su pago (1 si la tarjeta paga al mes siguiente del corte); sin tarjeta propia
   dudoso?: boolean;               // por cobrar dudoso: no cuenta en el patrimonio (b)
 }
 export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: number; income?: number }

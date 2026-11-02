@@ -174,15 +174,20 @@ export function houseSummary(month: string, people: Person[], payrolls: Item<Pay
   return { base, missing, totalIncome, totalSpent, rows, debtor, creditor, owes, settle, unassigned, duePlans };
 }
 
-/** Mes de la primera mensualidad: la compra cae en el primer corte >= fecha de compra; se paga en el primer dia de pago posterior a ese corte. */
-export function firstPaymentMonth(purchase: string, cutDay: number, payDay: number): string {
+/** Mes de la primera mensualidad: es el mes del estado de cuenta (corte) donde cae la compra, aunque se pague el mes siguiente. */
+export function firstPaymentMonth(purchase: string, cutDay: number, _payDay?: number): string {
   const d = parse(purchase);
   let cut = cutIn(d.getFullYear(), d.getMonth(), cutDay);
   if (d > cut) cut = cutIn(d.getFullYear(), d.getMonth() + 1, cutDay);
-  let pay = cutIn(cut.getFullYear(), cut.getMonth(), payDay);
-  if (pay <= cut) pay = cutIn(cut.getFullYear(), cut.getMonth() + 1, payDay);
-  return ym(pay);
+  return ym(cut);
 }
+/** Mes del estado de cuenta que cubre un pago hecho en `date`: el del ultimo corte hasta esa fecha. */
+export function stmtMonthAt(date: string, cutDay?: number): string {
+  if (!cutDay) return date.slice(0, 7);
+  return Number(date.slice(8, 10)) >= cutDay ? date.slice(0, 7) : addMonthsYm(date.slice(0, 7), -1);
+}
+/** Meses entre un estado de cuenta y su pago: 1 si el dia de pago cae en el mes siguiente al corte. */
+export const payShiftOf = (a?: Item<Account>) => (a?.data.cutDay && a.data.payDay && a.data.payDay <= a.data.cutDay ? 1 : 0);
 
 // ---------- Deudas con personas ----------
 export function ledgerStatus(i: LedgerItem, month = ym(new Date())) {
@@ -474,11 +479,14 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
   const DMby: Record<string, number> = {};
   const addDM = (id: string, v: number) => { DM += v; DMby[id] = (DMby[id] ?? 0) + v; };
   const planRem: Record<string, number> = {};
+  // las mensualidades se etiquetan por mes de estado de cuenta; las que se pagan en el periodo son las del estado anterior si la tarjeta paga al mes siguiente
+  const monthFor = (shift: number) => (shift ? addMonthsYm(m, -shift) : m);
+  const cardOfName = (name?: string) => { const cn = norm(name ?? ''); return cn ? accs.find(x => x.owner === ctx.me && x.data.type === 'credit' && norm(x.data.name) === cn) : undefined; };
   for (const p of plans) {
     const mine = p.owner === ctx.me;
     if (!mine && p.owner !== null) continue;
-    const st = planStatus(p.data, m);
     const cid = p.data.cardId ?? p.data.accountId;
+    const st = planStatus(p.data, monthFor(payShiftOf(accById.get(cid ?? ''))));
     const titular = mine || p.data.paidBy === ctx.myKey;
     if (titular && cid) planRem[cid] = (planRem[cid] ?? 0) + st.remainingAmount;
     if (mine && p.data.goalId) { addDM(p.data.goalId, st.remainingAmount); continue; }
@@ -495,7 +503,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
   }
   let ajenaLeft = 0;
   for (const l of ctx.ledger) {
-    const st = ledgerStatus(l.data, m);
+    const st = ledgerStatus(l.data, monthFor(l.data.payShift ?? payShiftOf(cardOfName(l.data.card))));
     if (l.data.dir === 'owe') {
       if (l.data.goalId) { addDM(l.data.goalId, st.left); DMowe += st.left; continue; }
       if (l.data.kind === 'installments' && st.due && !st.paidThisMonth) { D1 += st.monthly; br.owe += st.monthly; }

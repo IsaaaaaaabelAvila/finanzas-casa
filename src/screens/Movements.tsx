@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { releaseFromGoal, unrelease } from '../bag';
-import { accountBalance, addMonthsYm, firstPaymentMonth, ledgerStatus, money, monthLabel, planStatus, splitAt, today, ym } from '../calc';
+import { accountBalance, addMonthsYm, firstPaymentMonth, ledgerStatus, money, monthLabel, planStatus, splitAt, stmtMonthAt, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, INCOME_CATS, Txn, TxnType } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
@@ -156,7 +156,7 @@ export default function Movements({ d }: { d: Data }) {
 
   // pago de tarjeta: que parte son mensualidades de este mes y cual es el resto (lo calcula la app)
   const payTo = type === 'transfer' && !editId ? d.allAccounts.find(a => a.id === toAccountId) : undefined;
-  const payMonth = date.slice(0, 7);
+  const payMonth = stmtMonthAt(date, payTo?.data.cutDay);  // el pago cubre el estado de cuenta del ultimo corte
   const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
   const payInfo = payTo && payTo.data.type === 'credit' ? (() => {
     const plansDue = d.allPlans.filter(p => (p.data.cardId ?? p.data.accountId) === payTo.id).map(p => ({ p, st: planStatus(p.data, payMonth) })).filter(x => x.st.due && !x.st.paidThisMonth);
