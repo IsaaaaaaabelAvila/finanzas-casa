@@ -127,7 +127,16 @@ export const stmtPending = (a: Item<Account>, txns: Item<Txn>[]) => {
   const s = a.data.stmt;
   if (!s) return 0;
   const paid = txns.filter(t => t.data.type === 'transfer' && t.data.toAccountId === a.id && t.data.date >= s.asOf).reduce((x, t) => x + t.data.amount, 0);
-  return Math.max(0, s.amount - paid);
+  // un monto a favor (devolucion, reembolso) entre el corte y el pago es un pago adelantado de ese estado de cuenta
+  let adv = 0;
+  if (a.data.cutDay) {
+    const due = parse(s.due);
+    let c = cutIn(due.getFullYear(), due.getMonth(), a.data.cutDay);
+    if (c >= due) c = cutIn(due.getFullYear(), due.getMonth() - 1, a.data.cutDay);
+    const cut = iso(c);
+    adv = txns.filter(t => t.data.accountId === a.id && t.data.date > cut && t.data.date <= s.due && (t.data.type === 'income' || (t.data.type === 'adjust' && t.data.amount > 0))).reduce((x, t) => x + t.data.amount, 0);
+  }
+  return Math.max(0, s.amount - paid - adv);
 };
 export function planStatus(p: Plan, month = ym(new Date())) {
   const schedule = planSchedule(p);
