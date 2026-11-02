@@ -24,6 +24,7 @@ function PlansList({ d }: { d: Data }) {
   const [goalId, setGoalId] = useState('');
   const [partKey, setPartKey] = useState('');
   const [partPct, setPartPct] = useState('');
+  const [cardF, setCardF] = useState('');
 
   const cards = d.allAccounts.filter(a => a.data.type === 'credit' && (a.owner === d.me || a.owner === null));
   const accName = (id?: string) => d.allAccounts.find(a => a.id === id)?.data.name;
@@ -32,7 +33,12 @@ function PlansList({ d }: { d: Data }) {
   const bctx = budgetCtx(d);
   const mineAt = (m: string) => casaPct(bctx, m);
   // una compra liquidada cuyo calendario ya termino deja de mostrarse
-  const items = d.plans.map(p => ({ p, st: planStatus(p.data, nowM) })).filter(x => !(x.st.finished && x.st.schedule[x.st.schedule.length - 1] < nowM)).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
+  const cardOf = (p: Plan) => p.cardId ?? p.accountId ?? '';
+  const allItems = d.plans.map(p => ({ p, st: planStatus(p.data, nowM) })).filter(x => !(x.st.finished && x.st.schedule[x.st.schedule.length - 1] < nowM)).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
+  // tarjetas que aparecen en la lista, para filtrar
+  const cardIds = [...new Set(allItems.map(x => cardOf(x.p.data)))].sort((a, b) => (accName(a) ?? 'zzz').localeCompare(accName(b) ?? 'zzz'));
+  const cardLabel = (id: string) => (id ? accName(id) ?? 'Tarjeta de la casa' : 'Sin tarjeta');
+  const items = cardF === '' ? allItems : allItems.filter(x => cardOf(x.p.data) === (cardF === '__none' ? '' : cardF));
   const monthly = items.filter(x => x.st.due && !x.st.finished).reduce((a, x) => a + x.st.monthly, 0);
   const pendingMonth = items.filter(x => x.st.due && !x.st.paidThisMonth).reduce((a, x) => a + x.st.monthly, 0);
   const pending = items.reduce((a, x) => a + x.st.remainingAmount, 0);
@@ -64,6 +70,12 @@ function PlansList({ d }: { d: Data }) {
   return (
     <>
       <div className="month-nav"><b>Pagos a meses</b><button className="primary" onClick={() => setOpen(!open)}>{open ? 'Cerrar' : '+ Nuevo'}</button></div>
+      {cardIds.length > 1 && (
+        <div className="chips" style={{ margin: '4px 0 8px' }}>
+          <button className={`chip-m ${cardF === '' ? 'paid' : ''}`} onClick={() => setCardF('')}>Todas</button>
+          {cardIds.map(id => <button key={id || '__none'} className={`chip-m ${cardF === (id || '__none') ? 'paid' : ''}`} onClick={() => setCardF(id || '__none')}>{cardLabel(id)}</button>)}
+        </div>
+      )}
       <div className="stats">
         <div className="stat"><small>Mensualidades de {monthLabel(nowM)}</small><b>{money(monthly)}</b></div>
         <div className="stat"><small>Falta marcar este mes</small><b className={pendingMonth > 0 ? 'neg' : 'pos'}>{money(pendingMonth)}</b></div>
@@ -128,7 +140,7 @@ function PlansList({ d }: { d: Data }) {
           <Bar pct={(st.paidCount / p.data.months) * 100} />
           <small>
             {st.finished ? 'Liquidado' : `${st.paidCount} de ${p.data.months} pagadas · faltan ${st.remainingMonths} (${money(st.remainingAmount)})`}
-            {' · '}{ownerLabel(p.owner)}{personName(p.data.paidBy) ? ` · paga ${personName(p.data.paidBy)}` : ''}{accName(p.data.accountId) ? ` · ${accName(p.data.accountId)}` : ''}
+            {' · '}{ownerLabel(p.owner)}{personName(p.data.paidBy) ? ` · paga ${personName(p.data.paidBy)}` : ''}{accName(cardOf(p.data)) ? ` · ${accName(cardOf(p.data))}` : ''}
           </small>
           {p.owner === d.me && (
             (p.data.partes ?? []).length > 0 ? (
