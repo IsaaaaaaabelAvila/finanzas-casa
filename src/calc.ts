@@ -205,7 +205,7 @@ export const payShiftOf = (a?: Item<Account>) => (a?.data.cutDay && a.data.payDa
 export function ledgerStatus(i: LedgerItem, month = ym(new Date())) {
   if (i.kind === 'lump') {
     const left = Math.max(0, (i.amount ?? 0) - (i.settled ?? 0));
-    return { left, cardLeft: 0, receivable: 0, monthly: 0, due: false, paidThisMonth: false, paidCount: 0, schedule: [] as string[], remainingMonths: 0, finished: left <= 0.005 };
+    return { left, cardLeft: 0, held: 0, receivable: 0, monthly: 0, due: false, paidThisMonth: false, paidCount: 0, schedule: [] as string[], remainingMonths: 0, finished: left <= 0.005 };
   }
   const months = i.months ?? 0;
   const schedule = Array.from({ length: months }, (_, k) => addMonthsYm(i.firstMonth ?? month, k));
@@ -214,8 +214,12 @@ export function ledgerStatus(i: LedgerItem, month = ym(new Date())) {
   const monthly = i.monthly ?? 0;
   // lo que sigue dentro de la deuda de la tarjeta: meses sin reembolsar y sin pagar yo al banco
   const inCard = schedule.filter(m => !paid.has(m) && !(i.bankThrough && m <= i.bankThrough)).length;
-  const left = monthly * (months - paidCount);
-  return { left, cardLeft: monthly * inCard, receivable: left - monthly * inCard, monthly, due: schedule.includes(month), paidThisMonth: paid.has(month), paidCount, schedule, remainingMonths: months - paidCount, finished: paidCount >= months };
+  // saldo a favor: lo que me dieron de mas; descuenta primero de lo que sigue dentro de la deuda de la tarjeta (queda apartado)
+  const credit = Math.max(0, i.credit ?? 0);
+  const held = Math.min(credit, monthly * inCard);
+  const left = Math.max(0, monthly * (months - paidCount) - credit);
+  const cardLeft = monthly * inCard - held;
+  return { left, cardLeft, held, receivable: Math.max(0, left - cardLeft), monthly, due: schedule.includes(month), paidThisMonth: paid.has(month), paidCount, schedule, remainingMonths: months - paidCount, finished: paidCount >= months };
 }
 
 /** Lo que me deben + lo que falta de mis compras a meses (para quien suma eso a su dinero total, porque ya esta como deuda en sus tarjetas). */
@@ -525,9 +529,10 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
       if (l.data.kind === 'installments' && st.due && !st.paidThisMonth) { D1 += st.monthly; br.owe += st.monthly; }
     } else if (l.data.kind === 'installments' && !l.data.dudoso) {
       ajenaLeft += st.cardLeft;
+      ADV += st.held;
       const cn = norm(l.data.card ?? '');
       const cid = cn ? accs.find(x => x.owner === ctx.me && x.data.type === 'credit' && norm(x.data.name) === cn)?.id : undefined;
-      if (cid) ajenaByCard[cid] = (ajenaByCard[cid] ?? 0) + st.cardLeft;
+      if (cid) ajenaByCard[cid] = (ajenaByCard[cid] ?? 0) + st.cardLeft + st.held;
       // adelantos: meses que la persona ya me reembolso y yo aun no pago al banco; ese dinero esta en mis cuentas pero ya esta comprometido
       if (l.data.bankThrough !== undefined) {
         const paidSet = new Set(l.data.paid ?? []);
@@ -539,7 +544,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
         }
       }
       if (st.due && !st.paidThisMonth && !(l.data.bankThrough && l.data.bankThrough >= lm)) {
-        A += st.monthly;
+        A += st.monthly - Math.min(st.held, st.monthly);  // lo cubierto por saldo a favor ya esta apartado como adelanto
         // si su tarjeta tiene estado de cuenta, esa parte ya viene dentro del estado: se quita de ahi para no contarla dos veces
         if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly;
       }

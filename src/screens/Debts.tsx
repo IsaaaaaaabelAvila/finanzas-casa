@@ -51,11 +51,12 @@ export default function Debts({ d }: { d: Data }) {
 
   function toggle(id: string, it: LedgerItem, m: string) {
     const paid = (it.paid ?? []).includes(m);
-    if (!paid) { setPayFor({ id, it, month: m, amount: String(Math.round((it.monthly ?? 0) * 100) / 100) }); return; }
-    if (paid) { const tx = d.allTxns.find(t => t.data.payOf === `${id}:${m}`); if (tx) remove(tx.id); unrelease(d, `${id}:${m}`); }  // desmarcar borra su movimiento de pago
+    if (!paid) { setPayFor({ id, it, month: m, amount: String(Math.round(Math.max(0, (it.monthly ?? 0) - (dir === 'owed' ? it.credit ?? 0 : 0)) * 100) / 100) }); return; }
+    let credit = it.credit ?? 0;
+    if (paid) { const tx = d.allTxns.find(t => t.data.payOf === `${id}:${m}`); if (tx) { credit = Math.max(0, credit - Math.max(0, tx.data.amount - (it.monthly ?? 0))); remove(tx.id); } unrelease(d, `${id}:${m}`); }  // desmarcar borra su movimiento de pago
     const s = new Set(it.paid ?? []);
     if (s.has(m)) s.delete(m); else s.add(m);
-    save('ledger', { ...it, paid: [...s].sort() }, d.me, id);
+    save('ledger', { ...it, paid: [...s].sort(), credit: credit > 0.005 ? credit : undefined }, d.me, id);
   }
   function settle(id: string, it: LedgerItem) { setPayFor({ id, it, amount: '' }); }
   function confirmPay(register: boolean) {
@@ -65,7 +66,11 @@ export default function Debts({ d }: { d: Data }) {
     const v = num(payFor.amount);
     const owe = dir === 'owe';
     const key = m ? `${id}:${m}` : `${id}:lump:${Date.now()}`;
-    if (m) save('ledger', { ...it, paid: [...new Set([...(it.paid ?? []), m])].sort() }, d.me, id);
+    if (m) {
+      // lo que se recibe de mas (o el saldo a favor previo) menos la mensualidad queda como saldo a favor
+      const credit = owe ? undefined : Math.max(0, Math.round(((register ? v : 0) + (it.credit ?? 0) - (it.monthly ?? 0)) * 100) / 100);
+      save('ledger', { ...it, paid: [...new Set([...(it.paid ?? []), m])].sort(), credit: credit ? credit : undefined }, d.me, id);
+    }
     else if (v > 0) save('ledger', { ...it, settled: Math.max(0, (it.settled ?? 0) + v) }, d.me, id);
     // pagar a una persona o cobrarle es un movimiento entre cuenta y por pagar / por cobrar: ni gasto ni ingreso
     if (register && acc && v > 0) save('txn', { type: owe ? 'payout' : 'collect', amount: v, date: today(), accountId: acc, category: owe ? 'Pago de deuda' : 'Cobro', note: `${it.concept} · ${it.person}${m ? ` (${monthLabel(m)})` : ''}`, payOf: key, goalId: owe ? it.goalId : undefined } as Txn, d.me);
@@ -181,6 +186,8 @@ export default function Debts({ d }: { d: Data }) {
       {payFor && (
         <Card title={dir === 'owe' ? 'Registrar pago' : 'Registrar cobro'}>
           <p>{payFor.it.concept} · {payFor.it.person}{payFor.month ? ` · ${monthLabel(payFor.month)}` : ''}</p>
+          {dir === 'owed' && payFor.month && (payFor.it.credit ?? 0) > 0.5 && <small>Tiene saldo a favor de {money(payFor.it.credit ?? 0)}. Si le sobra, queda como saldo a favor para el siguiente mes.</small>}
+          {dir === 'owed' && payFor.month && num(payFor.amount) > (payFor.it.monthly ?? 0) + 0.5 && <small>Lo que pase de {money(payFor.it.monthly ?? 0)} queda como saldo a favor (apartado) para los siguientes meses.</small>}
           <Field label="Monto"><input inputMode="decimal" value={payFor.amount} onChange={e => setPayFor({ ...payFor, amount: e.target.value })} /></Field>
           <Field label={dir === 'owe' ? '¿De que cuenta salio el dinero?' : '¿A que cuenta entro el dinero?'}>
             <select value={payAcc || accs[0]?.id || ''} onChange={e => setPayAcc(e.target.value)}>
@@ -230,7 +237,7 @@ export default function Debts({ d }: { d: Data }) {
                     </div>
                     {dir === 'owed' && (
                       <>
-                        <small>Reembolsadas {st.paidCount} de {i.data.months} · pagadas por mi al banco {st.schedule.filter(m => i.data.bankThrough && m <= i.data.bankThrough).length} de {i.data.months}{st.receivable > 0.5 ? ` · por cobrar de lo ya pagado ${money(st.receivable)}` : ''}{i.data.bankThrough !== undefined && st.schedule.some(m => (i.data.paid ?? []).includes(m) && m > i.data.bankThrough!) ? ` · adelantado (cobrado, aun sin pagar al banco) ${money(st.monthly * st.schedule.filter(m => (i.data.paid ?? []).includes(m) && m > i.data.bankThrough!).length)}` : ''}{st.cardLeft > 0.5 ? ` · neto por pagar al banco ${money(st.cardLeft)}` : ''}</small>
+                        <small>Reembolsadas {st.paidCount} de {i.data.months} · pagadas por mi al banco {st.schedule.filter(m => i.data.bankThrough && m <= i.data.bankThrough).length} de {i.data.months}{st.receivable > 0.5 ? ` · por cobrar de lo ya pagado ${money(st.receivable)}` : ''}{i.data.bankThrough !== undefined && st.schedule.some(m => (i.data.paid ?? []).includes(m) && m > i.data.bankThrough!) ? ` · adelantado (cobrado, aun sin pagar al banco) ${money(st.monthly * st.schedule.filter(m => (i.data.paid ?? []).includes(m) && m > i.data.bankThrough!).length)}` : ''}{(i.data.credit ?? 0) > 0.5 ? ` · saldo a favor ${money(i.data.credit ?? 0)}` : ''}{st.cardLeft > 0.5 ? ` · neto por pagar al banco ${money(st.cardLeft)}` : ''}</small>
                         <label className="field mini"><span>Pagado por mi al banco hasta</span>
                           <select value={i.data.bankThrough ?? ''} onChange={e => save('ledger', { ...i.data, bankThrough: e.target.value || undefined }, d.me, i.id)}>
                             <option value="">ninguno</option>

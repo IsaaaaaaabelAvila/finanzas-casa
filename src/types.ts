@@ -81,6 +81,7 @@ export interface LedgerItem {
   goalId?: string;                // se paga con el dinero de esta meta; no resta del libre
   payShift?: number;              // meses entre el estado de cuenta y su pago (1 si la tarjeta paga al mes siguiente del corte); sin tarjeta propia
   dudoso?: boolean;               // por cobrar dudoso: no cuenta en el patrimonio (b)
+  credit?: number;                // me deben (a meses): saldo a favor, dinero que ya me dieron de mas y descuenta de los siguientes meses
   bankThrough?: string;           // me deben (a meses): ya pague a la tarjeta hasta este mes de estado de cuenta (inclusive); lo no reembolsado de esos meses es por cobrar
 }
 export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: number; income?: number }
