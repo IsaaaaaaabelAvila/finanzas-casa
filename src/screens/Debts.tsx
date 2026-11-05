@@ -213,7 +213,7 @@ export default function Debts({ d }: { d: Data }) {
             {mine.map(({ i, st }) => (
               <div key={i.id} className="debt">
                 <div className="row">
-                  <div><b>{i.data.concept}</b><small>{i.data.kind === 'installments' ? (i.data.card ? `${i.data.card} · ` : '') + `${st.paidCount} de ${i.data.months} pagadas` : `${i.data.dudoso ? 'Dudoso · ' : ''}${i.data.aside ? 'Deuda aparte' : 'Monto unico'}`}</small></div>
+                  <div><b>{i.data.concept}</b><small>{i.data.kind === 'installments' ? (i.data.card ? `${i.data.card} · ` : '') + `${st.paidCount} de ${i.data.months} pagadas · ${st.finished ? 'liquidada' : `faltan ${st.remainingMonths} (${money(st.left)})`}` : `${i.data.dudoso ? 'Dudoso · ' : ''}${i.data.aside ? 'Deuda aparte' : 'Monto unico'}`}</small></div>
                   <div className="tx-r">
                     {i.data.kind === 'installments' ? <b>{money(st.monthly)}</b> : <b>{money(st.left)}</b>}
                   </div>
@@ -230,7 +230,7 @@ export default function Debts({ d }: { d: Data }) {
                     </div>
                     {dir === 'owed' && (
                       <>
-                        <small>Reembolsadas {st.paidCount} de {i.data.months} · pagadas por mi al banco {st.schedule.filter(m => i.data.bankThrough && m <= i.data.bankThrough).length} de {i.data.months}{st.receivable > 0.5 ? ` · por cobrar de lo ya pagado ${money(st.receivable)}` : ''}</small>
+                        <small>Reembolsadas {st.paidCount} de {i.data.months} · pagadas por mi al banco {st.schedule.filter(m => i.data.bankThrough && m <= i.data.bankThrough).length} de {i.data.months}{st.receivable > 0.5 ? ` · por cobrar de lo ya pagado ${money(st.receivable)}` : ''}{st.cardLeft > 0.5 ? ` · neto por pagar al banco ${money(st.cardLeft)}` : ''}</small>
                         <label className="field mini"><span>Pagado por mi al banco hasta</span>
                           <select value={i.data.bankThrough ?? ''} onChange={e => save('ledger', { ...i.data, bankThrough: e.target.value || undefined }, d.me, i.id)}>
                             <option value="">ninguno</option>
