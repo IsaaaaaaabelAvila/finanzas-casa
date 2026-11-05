@@ -53,10 +53,12 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
   const ownTotal = sum(own.map(rem));
   const ownMine = ownTotal - d.pat.ajenaPlanes;
   const byOthers = d.pat.ajenaLedger + d.pat.ajenaPlanes;
-  const houseTotal = sum(house.map(remShare));
+  const houseTotal = sum(house.map(remShare));   // lo que reparte la casa
+  const houseCard = sum(house.map(rem));         // lo que aun cobra la tarjeta
+  const houseCovered = houseCard - houseTotal;   // ya cubierto aparte (reembolso a la tarjeta u otra persona)
   const housePay = sum(house.filter(p => p.data.paidBy === d.myKey).map(remShare));
   const houseOwe = houseTotal - housePay;
-  const grossAll = ownTotal + d.pat.ajenaLedger + houseTotal;
+  const grossAll = ownTotal + d.pat.ajenaLedger + houseCard;
   const netAll = ownMine + houseTotal * pctMe;
   const otherName = others[0]?.name ?? 'Los demas';
 
@@ -106,9 +108,11 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
           <div className="row"><small>Mis compras a meses (solo mi parte)</small><span>{money(ownMine)}</span></div>
           <div className="row"><small>Pago por otras personas (me lo reembolsan)</small><span>{money(byOthers)}</span></div>
           {d.pat.ajenaPlanes > 0.5 && <div className="row"><small>· Parte ajena de mis compras con otros responsables</small><small>{money(d.pat.ajenaPlanes)}</small></div>}
-          <div className="row"><small>Casa (completa)</small><span>{money(houseTotal)}</span></div>
+          <div className="row"><small>Casa (completa, como la cobra la tarjeta)</small><span>{money(houseCard)}</span></div>
+          {houseCovered > 0.5 && <div className="row"><small>· Ya cubierto aparte (reembolso a la tarjeta u otra persona)</small><small>{money(houseCovered)}</small></div>}
           {houseTotal > 0.5 && (
             <>
+              <div className="row"><small>· Lo que reparte la casa</small><small>{money(houseTotal)}</small></div>
               <div className="row"><small>· Las pago yo (soy el titular; los demas me reembolsan su parte)</small><small>{money(housePay)}</small></div>
               <div className="row"><small>· Las paga otro titular (me toca mi parte)</small><small>{money(houseOwe)}</small></div>
               <div className="row"><small>Porcentaje de la casa este mes</small><small>{(pctMe * 100).toFixed(1)}% yo · {((1 - pctMe) * 100).toFixed(1)}% {otherName}</small></div>
@@ -117,7 +121,7 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
             </>
           )}
           <div className="row"><b>Lo que realmente es mio</b><b className="neg">{money(netAll)}</b></div>
-          <small>Neto = mis compras ({money(ownMine)}) + mi parte de la casa ({money(houseTotal * pctMe)}). Bruto − neto = {money(grossAll - netAll)}, que es lo que otros me reembolsan o cubren.</small>
+          <small>Neto = mis compras ({money(ownMine)}) + mi parte de la casa ({money(houseTotal * pctMe)}). Bruto − neto = {money(grossAll - netAll)}, que es lo que otros me reembolsan o ya esta cubierto aparte.</small>
         </Card>
       )}
 
