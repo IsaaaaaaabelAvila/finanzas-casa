@@ -156,7 +156,7 @@ export default function App() {
         {tab === 'mov' && <Movements d={data} />}
         {tab === 'acc' && <Accounts d={data} />}
         {tab === 'house' && <House d={data} />}
-        {tab === 'plans' && <Plans d={data} />}
+        {tab === 'plans' && <Plans d={data} scope={scope} />}
         {tab === 'goals' && <Goals d={data} />}
         {tab === 'set' && <Settings d={data} onSignOut={signOut} onLocalSetup={() => setState({ me: 'local' })} />}
       </main>

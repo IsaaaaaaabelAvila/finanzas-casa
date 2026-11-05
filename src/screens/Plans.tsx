@@ -3,12 +3,12 @@ import { budgetCtx } from '../budget';
 import { casaPct, firstPaymentMonth, monthLabel, money, planAjenaLeft, planOtherPct, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { EXPENSE_CATS, Plan } from '../types';
-import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
+import { Bar, Card, Data, Empty, Field, Scope, num, ownerLabel } from '../ui';
 import Debts from './Debts';
 import { releaseFromGoal, unrelease } from '../bag';
 import Commitments from './Commitments';
 
-function PlansList({ d }: { d: Data }) {
+function PlansList({ d, scope }: { d: Data; scope: Scope }) {
   const nowM = ym(new Date());
   const [open, setOpen] = useState(false);
   const [desc, setDesc] = useState('');
@@ -42,6 +42,22 @@ function PlansList({ d }: { d: Data }) {
   const monthly = items.filter(x => x.st.due && !x.st.finished).reduce((a, x) => a + x.st.monthly, 0);
   const pendingMonth = items.filter(x => x.st.due && !x.st.paidThisMonth).reduce((a, x) => a + x.st.monthly, 0);
   const pending = items.reduce((a, x) => a + x.st.remainingAmount, 0);
+
+  // resumen neto de todo lo que falta a meses (solo vista Todo)
+  const rem = (p: { data: Plan }) => planStatus(p.data, nowM).remainingAmount;
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  const own = d.plans.filter(p => p.owner === d.me);
+  const house = d.plans.filter(p => p.owner === null);
+  const pctMe = d.pat.housePct;
+  const ownTotal = sum(own.map(rem));
+  const ownMine = ownTotal - d.pat.ajenaPlanes;
+  const byOthers = d.pat.ajenaLedger + d.pat.ajenaPlanes;
+  const houseTotal = sum(house.map(rem));
+  const housePay = sum(house.filter(p => p.data.paidBy === d.myKey).map(rem));
+  const houseOwe = houseTotal - housePay;
+  const grossAll = ownTotal + d.pat.ajenaLedger + houseTotal;
+  const netAll = ownMine + houseTotal * pctMe;
+  const otherName = others[0]?.name ?? 'Los demas';
 
   const chosen = cards.find(a => a.id === (accountId || (shared ? '' : cards[0]?.id)));
   const auto = chosen?.data.cutDay && chosen.data.payDay ? firstPaymentMonth(start, chosen.data.cutDay, chosen.data.payDay) : null;
@@ -81,6 +97,29 @@ function PlansList({ d }: { d: Data }) {
         <div className="stat"><small>Falta marcar este mes</small><b className={pendingMonth > 0 ? 'neg' : 'pos'}>{money(pendingMonth)}</b></div>
         <div className="stat"><small>Total pendiente</small><b className="neg">{money(pending)}</b></div>
       </div>
+
+      {scope === 'all' && cardF === '' && (
+        <Card title="Todo lo que se debe aun a meses">
+          <small>TOTAL PENDIENTE (BRUTO)</small>
+          <div className="big neg" style={{ fontSize: 34, lineHeight: 1.1 }}>{money(grossAll)}</div>
+          <div className="row"><small>Mis compras a meses (solo mi parte)</small><span>{money(ownMine)}</span></div>
+          <div className="row"><small>Pago por otras personas (me lo reembolsan)</small><span>{money(byOthers)}</span></div>
+          {d.pat.ajenaLedger > 0.5 && <div className="row"><small>· Mensualidades de personas en mis tarjetas</small><small>{money(d.pat.ajenaLedger)}</small></div>}
+          {d.pat.ajenaPlanes > 0.5 && <div className="row"><small>· Parte ajena de mis compras con otros responsables</small><small>{money(d.pat.ajenaPlanes)}</small></div>}
+          <div className="row"><small>Casa (completa)</small><span>{money(houseTotal)}</span></div>
+          {houseTotal > 0.5 && (
+            <>
+              <div className="row"><small>· Las pago yo (soy el titular; los demas me reembolsan su parte)</small><small>{money(housePay)}</small></div>
+              <div className="row"><small>· Las paga otro titular (me toca mi parte)</small><small>{money(houseOwe)}</small></div>
+              <div className="row"><small>Porcentaje de la casa este mes</small><small>{(pctMe * 100).toFixed(1)}% yo · {((1 - pctMe) * 100).toFixed(1)}% {otherName}</small></div>
+              <div className="row"><small>Mi parte neta de la casa ({(pctMe * 100).toFixed(1)}% de {money(houseTotal)})</small><span>{money(houseTotal * pctMe)}</span></div>
+              <div className="row"><small>Parte de {otherName} en la casa</small><small>{money(houseTotal * (1 - pctMe))}</small></div>
+            </>
+          )}
+          <div className="row"><b>Lo que realmente es mio</b><b className="neg">{money(netAll)}</b></div>
+          <small>Neto = mis compras ({money(ownMine)}) + mi parte de la casa ({money(houseTotal * pctMe)}). Bruto − neto = {money(grossAll - netAll)}, que es lo que otros me reembolsan o cubren.</small>
+        </Card>
+      )}
 
       {open && (
         <Card title="Nueva compra a meses">
@@ -197,7 +236,7 @@ function PlansList({ d }: { d: Data }) {
   );
 }
 
-export default function Plans({ d }: { d: Data }) {
+export default function Plans({ d, scope }: { d: Data; scope: Scope }) {
   const [view, setView] = useState<'plans' | 'debts' | 'commit'>('plans');
   return (
     <>
@@ -206,7 +245,7 @@ export default function Plans({ d }: { d: Data }) {
         <button className={view === 'debts' ? 'on' : ''} onClick={() => setView('debts')}>Deudas con personas</button>
         <button className={view === 'commit' ? 'on' : ''} onClick={() => setView('commit')}>Compromisos</button>
       </div>
-      {view === 'plans' ? <PlansList d={d} /> : view === 'debts' ? <Debts d={d} /> : <Commitments d={d} />}
+      {view === 'plans' ? <PlansList d={d} scope={scope} /> : view === 'debts' ? <Debts d={d} /> : <Commitments d={d} />}
     </>
   );
 }
