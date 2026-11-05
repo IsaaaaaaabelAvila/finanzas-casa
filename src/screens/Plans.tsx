@@ -105,7 +105,6 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
           <div className="big neg" style={{ fontSize: 34, lineHeight: 1.1 }}>{money(grossAll)}</div>
           <div className="row"><small>Mis compras a meses (solo mi parte)</small><span>{money(ownMine)}</span></div>
           <div className="row"><small>Pago por otras personas (me lo reembolsan)</small><span>{money(byOthers)}</span></div>
-          {d.pat.ajenaLedger > 0.5 && <div className="row"><small>· Mensualidades de personas en mis tarjetas</small><small>{money(d.pat.ajenaLedger)}</small></div>}
           {d.pat.ajenaPlanes > 0.5 && <div className="row"><small>· Parte ajena de mis compras con otros responsables</small><small>{money(d.pat.ajenaPlanes)}</small></div>}
           <div className="row"><small>Casa (completa)</small><span>{money(houseTotal)}</span></div>
           {houseTotal > 0.5 && (
