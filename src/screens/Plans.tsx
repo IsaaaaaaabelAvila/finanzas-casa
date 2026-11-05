@@ -197,9 +197,9 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
                 </div>
               </div>
             ) : others.length > 0 && (
-              <label className="field" style={{ margin: '8px 0 0' }}><span>¿Alguien mas es responsable de una parte?</span>
+              <label className="field mini"><span>¿Alguien mas es responsable de una parte?</span>
                 <select value="" onChange={e => { const k = e.target.value; if (!k) return; const r = prompt('¿Que % de la compra le toca? (vacio = segun ingresos de cada mes)', ''); if (r === null) return; const v = num(r); save('plan', { ...p.data, partes: [{ key: k, pct: v > 0 ? Math.min(100, v) : undefined }] }, p.owner, p.id); }}>
-                  <option value="">— elegir persona —</option>
+                  <option value="">elegir…</option>
                   {others.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
                 </select>
               </label>
@@ -219,9 +219,9 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
             (p.data.cardId ?? p.data.accountId)
               ? <small>Tarjeta: {accName(p.data.cardId ?? p.data.accountId) ?? '—'}{p.data.cardId && <> · <button className="link" style={{ padding: 0 }} onClick={() => save('plan', { ...p.data, cardId: undefined }, p.owner, p.id)}>Cambiar</button></>}</small>
               : (
-                <label className="field" style={{ margin: '8px 0 0' }}><span>¿De que tarjeta es? (asi se marcan solas al pagar la tarjeta)</span>
+                <label className="field mini"><span>¿De que tarjeta es? (se marcan solas al pagarla)</span>
                   <select value="" onChange={e => e.target.value && save('plan', { ...p.data, cardId: e.target.value }, p.owner, p.id)}>
-                    <option value="">— elegir tarjeta —</option>
+                    <option value="">elegir…</option>
                     {cards.map(a => <option key={a.id} value={a.id}>{a.data.name}</option>)}
                   </select>
                 </label>
