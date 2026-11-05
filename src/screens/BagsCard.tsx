@@ -112,6 +112,7 @@ export default function BagsCard({ d }: { d: Data }) {
           {b.d2.otros > 0.5 && <div className="row"><small>· Mensualidades futuras a personas</small><small>{money(b.d2.otros)}</small></div>}
           {b.d2.banco > 0.5 && <div className="row"><small>· Saldo de tarjetas que no vence este mes</small><small>{money(b.d2.banco)}</small></div>}
           {b.DM > 0.5 && <div className="row"><small>Apartado para deudas que paga una meta</small><small>−{money(b.DM)}</small></div>}
+          {b.ADV > 0.5 && <div className="row"><small>Adelantos recibidos (para pagar meses futuros)</small><small>−{money(b.ADV)}</small></div>}
           <div className="row last"><b>Ahorro real</b><b>{money(b.ahorro)}</b></div>
         </Card>
       </div>

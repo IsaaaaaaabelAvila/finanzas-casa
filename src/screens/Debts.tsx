@@ -41,7 +41,7 @@ export default function Debts({ d }: { d: Data }) {
     if (f.kind === 'installments') {
       const months = Math.max(1, Math.round(num(f.months)));
       const done = Math.min(months, Math.max(0, Math.round(num(f.done))));
-      save('ledger', { ...base, monthly: num(f.monthly), months, firstMonth: f.firstMonth, paid: Array.from({ length: done }, (_, k) => addMonthsYm(f.firstMonth, k)) }, d.me);
+      save('ledger', { ...base, monthly: num(f.monthly), months, firstMonth: f.firstMonth, paid: Array.from({ length: done }, (_, k) => addMonthsYm(f.firstMonth, k)), bankThrough: dir === 'owed' ? addMonthsYm(f.firstMonth, done - 1) : undefined }, d.me);
     } else {
       save('ledger', { ...base, amount: num(f.amount), settled: num(f.settled), aside: f.aside || undefined }, d.me);
     }
@@ -230,7 +230,7 @@ export default function Debts({ d }: { d: Data }) {
                     </div>
                     {dir === 'owed' && (
                       <>
-                        <small>Reembolsadas {st.paidCount} de {i.data.months} · pagadas por mi al banco {st.schedule.filter(m => i.data.bankThrough && m <= i.data.bankThrough).length} de {i.data.months}{st.receivable > 0.5 ? ` · por cobrar de lo ya pagado ${money(st.receivable)}` : ''}{st.cardLeft > 0.5 ? ` · neto por pagar al banco ${money(st.cardLeft)}` : ''}</small>
+                        <small>Reembolsadas {st.paidCount} de {i.data.months} · pagadas por mi al banco {st.schedule.filter(m => i.data.bankThrough && m <= i.data.bankThrough).length} de {i.data.months}{st.receivable > 0.5 ? ` · por cobrar de lo ya pagado ${money(st.receivable)}` : ''}{i.data.bankThrough !== undefined && st.schedule.some(m => (i.data.paid ?? []).includes(m) && m > i.data.bankThrough!) ? ` · adelantado (cobrado, aun sin pagar al banco) ${money(st.monthly * st.schedule.filter(m => (i.data.paid ?? []).includes(m) && m > i.data.bankThrough!).length)}` : ''}{st.cardLeft > 0.5 ? ` · neto por pagar al banco ${money(st.cardLeft)}` : ''}</small>
                         <label className="field mini"><span>Pagado por mi al banco hasta</span>
                           <select value={i.data.bankThrough ?? ''} onChange={e => save('ledger', { ...i.data, bankThrough: e.target.value || undefined }, d.me, i.id)}>
                             <option value="">ninguno</option>

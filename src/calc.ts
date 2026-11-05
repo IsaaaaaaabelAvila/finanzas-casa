@@ -489,7 +489,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
   const norm = (x: string) => x.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
   const cardA: Record<string, number> = {};
   const ajenaByCard: Record<string, number> = {};  // mensualidades que otros me deben, por tarjeta (estan dentro del saldo de esa tarjeta)
-  let D1 = 0, A = 0, DM = 0, DMowe = 0;
+  let D1 = 0, A = 0, DM = 0, DMowe = 0, ADV = 0;
   const br = { own: 0, casa: 0, owe: 0, cards: [] as { name: string; v: number; stmt: boolean }[] };
   const DMby: Record<string, number> = {};
   const addDM = (id: string, v: number) => { DM += v; DMby[id] = (DMby[id] ?? 0) + v; };
@@ -528,6 +528,16 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
       const cn = norm(l.data.card ?? '');
       const cid = cn ? accs.find(x => x.owner === ctx.me && x.data.type === 'credit' && norm(x.data.name) === cn)?.id : undefined;
       if (cid) ajenaByCard[cid] = (ajenaByCard[cid] ?? 0) + st.cardLeft;
+      // adelantos: meses que la persona ya me reembolso y yo aun no pago al banco; ese dinero esta en mis cuentas pero ya esta comprometido
+      if (l.data.bankThrough !== undefined) {
+        const paidSet = new Set(l.data.paid ?? []);
+        const adv = st.schedule.filter(x => paidSet.has(x) && x > l.data.bankThrough!);
+        if (adv.length) {
+          ADV += adv.length * st.monthly;
+          if (cid) ajenaByCard[cid] = (ajenaByCard[cid] ?? 0) + adv.length * st.monthly;
+          if (adv.includes(lm) && cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly;
+        }
+      }
       if (st.due && !st.paidThisMonth && !(l.data.bankThrough && l.data.bankThrough >= lm)) {
         A += st.monthly;
         // si su tarjeta tiene estado de cuenta, esa parte ya viene dentro del estado: se quita de ahi para no contarla dos veces
@@ -544,7 +554,7 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
     const nv = ctx.txns.filter(t => t.owner === ctx.me && t.data.type === 'expense' && t.data.accountId === id && t.data.date >= asOf && !t.data.payOf && !t.data.goalId && !t.data.ledgerId && !linkedTx.has(t.id)).reduce((x, t) => x + t.data.amount, 0);
     if (nv > 0.5) { D1 += nv; br.cards.push({ name: `${acc?.data.name ?? 'Tarjeta'} (compras nuevas)`, v: nv, stmt: false }); }
   }
-  return { D1, A, DM, DMowe, DMby, planRem, end, pct, ajenaLeft, ajenaByCard, ref, stmtCards, br };
+  return { D1, A, DM, DMowe, ADV, DMby, planRem, end, pct, ajenaLeft, ajenaByCard, ref, stmtCards, br };
 }
 
 /**
@@ -566,9 +576,10 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   for (const r of rows) { D1 += r.c; if (r.c > 0.5) L.br.cards.push({ name: r.name, v: r.c, stmt: false }); }
   const brSum = L.br.own + L.br.casa + L.br.owe + L.br.cards.reduce((x, r) => x + r.v, 0);
   const Dtot = pat.deudaPropia + pat.porPagar;
-  D1 = Math.min(D1, Math.max(0, Dtot - L.DM));
+  const DMe = L.DM + L.ADV;  // deuda apartada: la que paga una meta y los adelantos recibidos
+  D1 = Math.min(D1, Math.max(0, Dtot - DMe));
   const adjust = D1 - brSum;
-  const D2 = Math.max(0, Dtot - D1 - L.DM);
+  const D2 = Math.max(0, Dtot - D1 - DMe);
   const P = pat.a;
   const w = D2 > 0 ? Math.min(1, Math.max(0, 1 + P / D2)) : 1;
   const cash = cashTotal(accs, txns, plans, oweLeft);
@@ -582,9 +593,10 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   let S = S0;
   for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= start.from) S += incomeToSavings(st, x.data);
   for (const x of moves) if (x.owner === me && (x.data.date >= start.from || start.ahorro == null) && !x.data.res) S += x.data.amount;  // antes del arranque, mientras no este fijado, los movimientos ajustan la apertura
-  const B2 = Math.min(w * D2, Math.max(0, S - L.DM));
-  const ahorro = Math.max(0, Math.min(S - B2 - L.DM, Math.max(0, P)));
-  const ahorroBag = Math.min(Math.max(0, cash), ahorro + B2 + L.DM);
+  const Se = S + L.ADV;  // los adelantos ya estan en las cuentas: se suman a la bolsa de ahorro y se apartan completos
+  const B2 = Math.min(w * D2, Math.max(0, Se - DMe));
+  const ahorro = Math.max(0, Math.min(Se - B2 - DMe, Math.max(0, P)));
+  const ahorroBag = Math.min(Math.max(0, cash), ahorro + B2 + DMe);
   const gastoBag = cash - ahorroBag;
   // la nomina que llega en este periodo financia el siguiente: su parte de gasto se reserva hasta que cambie el periodo
   const win = periodWindow(ref, mode);
@@ -608,8 +620,8 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const spent = goalSpent(moves, me);
   for (const k of new Set([...Object.keys(spent), ...Object.keys(L.DMby)])) held[k] = (spent[k] ?? 0) + (L.DMby[k] ?? 0);
   return {
-    cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, D1, D2, A: L.A, O, provision: prov, sinCobertura: D2 - B2,
-    comprometida: D1 + B2 + L.DM, d1: { ...L.br, adjust }, R, RES, resUse, gastoIni, falta, prev, casaFuture, d2, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
+    cash, gastoBag, ahorroBag, libre, ahorro, B2, DM: L.DM, ADV: L.ADV, D1, D2, A: L.A, O, provision: prov, sinCobertura: D2 - B2,
+    comprometida: D1 + B2 + DMe, d1: { ...L.br, adjust }, R, RES, resUse, gastoIni, falta, prev, casaFuture, d2, patrimonio: P, S0, S, w, from: start.from, started: t >= start.from,
     fixed: start.ahorro != null, goalHeld: held, goalPending: L.DMby
   };
 }
