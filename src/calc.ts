@@ -120,6 +120,8 @@ export function planSchedule(p: Plan): string[] {
 }
 /** Fraccion (0-1) de una compra que pertenece a otros responsables. */
 export const planOtherPct = (p: Plan, mineShare = 0.5) => Math.min(1, Math.max(0, (p.partes ?? []).reduce((a, x) => a + (x.pct ?? (1 - mineShare) * 100), 0) / 100));
+/** Mensualidad que reparte la casa: lo que cobra la tarjeta menos lo ya cubierto aparte. */
+export const planShare = (p: Plan) => Math.max(0, p.total - (p.covered ?? 0)) / p.months;
 /** Parte ajena que aun no han reembolsado al titular. */
 export const planAjenaLeft = (p: Plan, mineAt: (m: string) => number = () => 0.5) => { const s = planStatus(p); return s.schedule.filter(m => !(p.reimb ?? []).includes(m)).reduce((a, m) => a + s.monthly * planOtherPct(p, mineAt(m)), 0); };
 /** Lo que falta del estado de cuenta capturado (los traspasos a la tarjeta posteriores a la captura lo van pagando). */
@@ -147,6 +149,7 @@ export function planStatus(p: Plan, month = ym(new Date())) {
     schedule, paidCount, monthly,
     due: schedule.includes(month), paidThisMonth: paidSet.has(month),
     remainingMonths: p.months - paidCount, remainingAmount: monthly * (p.months - paidCount),
+    shareMonthly: planShare(p), shareRemaining: planShare(p) * (p.months - paidCount),
     finished: paidCount >= p.months
   };
 }
@@ -166,11 +169,11 @@ export function houseSummary(month: string, people: Person[], payrolls: Item<Pay
   const duePlans = plans.filter(p => p.owner === null && planStatus(p.data, month).due);
   const keys = new Set(people.map(p => p.key));
   const unassigned = shared.filter(t => !t.data.paidBy || !keys.has(t.data.paidBy)).reduce((a, t) => a + t.data.amount, 0)
-    + duePlans.filter(p => !p.data.paidBy || !keys.has(p.data.paidBy)).reduce((a, p) => a + p.data.total / p.data.months, 0);
+    + duePlans.filter(p => !p.data.paidBy || !keys.has(p.data.paidBy)).reduce((a, p) => a + planShare(p.data), 0);
   const rows: HouseRow[] = people.map(p => {
     const income = incomeOf(p.key);
     const cash = shared.filter(t => t.data.paidBy === p.key).reduce((a, t) => a + t.data.amount, 0);
-    const installments = duePlans.filter(pl => pl.data.paidBy === p.key).reduce((a, pl) => a + pl.data.total / pl.data.months, 0);
+    const installments = duePlans.filter(pl => pl.data.paidBy === p.key).reduce((a, pl) => a + planShare(pl.data), 0);
     return { key: p.key, name: p.name, income, pct: totalIncome > 0 ? income / totalIncome : 1 / Math.max(1, people.length), cash, installments, paid: cash + installments, should: 0, diff: 0 };
   });
   const totalSpent = rows.reduce((a, r) => a + r.paid, 0);
@@ -202,14 +205,17 @@ export const payShiftOf = (a?: Item<Account>) => (a?.data.cutDay && a.data.payDa
 export function ledgerStatus(i: LedgerItem, month = ym(new Date())) {
   if (i.kind === 'lump') {
     const left = Math.max(0, (i.amount ?? 0) - (i.settled ?? 0));
-    return { left, monthly: 0, due: false, paidThisMonth: false, paidCount: 0, schedule: [] as string[], remainingMonths: 0, finished: left <= 0.005 };
+    return { left, cardLeft: 0, receivable: 0, monthly: 0, due: false, paidThisMonth: false, paidCount: 0, schedule: [] as string[], remainingMonths: 0, finished: left <= 0.005 };
   }
   const months = i.months ?? 0;
   const schedule = Array.from({ length: months }, (_, k) => addMonthsYm(i.firstMonth ?? month, k));
   const paid = new Set(i.paid ?? []);
   const paidCount = schedule.filter(m => paid.has(m)).length;
   const monthly = i.monthly ?? 0;
-  return { left: monthly * (months - paidCount), monthly, due: schedule.includes(month), paidThisMonth: paid.has(month), paidCount, schedule, remainingMonths: months - paidCount, finished: paidCount >= months };
+  // lo que sigue dentro de la deuda de la tarjeta: meses sin reembolsar y sin pagar yo al banco
+  const inCard = schedule.filter(m => !paid.has(m) && !(i.bankThrough && m <= i.bankThrough)).length;
+  const left = monthly * (months - paidCount);
+  return { left, cardLeft: monthly * inCard, receivable: left - monthly * inCard, monthly, due: schedule.includes(month), paidThisMonth: paid.has(month), paidCount, schedule, remainingMonths: months - paidCount, finished: paidCount >= months };
 }
 
 /** Lo que me deben + lo que falta de mis compras a meses (para quien suma eso a su dinero total, porque ya esta como deuda en sus tarjetas). */
@@ -266,7 +272,7 @@ export const casaPct = (ctx: BudgetCtx, m: string) => {
 export function monthCommitments(ctx: BudgetCtx, m: string) {
   const own = ctx.plans.filter(p => p.owner === ctx.me && !p.data.goalId).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly * (1 - planOtherPct(p.data, casaPct(ctx, m))) : 0); }, 0);
   const owe = ctx.ledger.filter(l => l.data.dir === 'owe' && !l.data.goalId).reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
-  const casaTotal = ctx.plans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly : 0); }, 0);
+  const casaTotal = ctx.plans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? planShare(p.data) : 0); }, 0);
   const casa = casaTotal * casaPct(ctx, m);
   const advanced = ctx.ledger.filter(l => l.data.dir === 'owed').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
   return { own, owe, casa, advanced, total: own + owe + casa };
@@ -506,22 +512,23 @@ export function debtLayers(accs: Item<Account>[], plans: Item<Plan>[], ctx: Budg
       if (!sc) { D1 += st.monthly * (1 - o); br.own += st.monthly * (1 - o); }
       if (o > 0 && !(p.data.reimb ?? []).includes(m)) { A += st.monthly * o; if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly * o; }
     } else {
-      if (!sc) { D1 += st.monthly * pct; br.casa += st.monthly * pct; }
-      if (p.data.paidBy === ctx.myKey) { A += st.monthly * (1 - pct); if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly * (1 - pct); }
+      if (!sc) { D1 += st.shareMonthly * pct; br.casa += st.shareMonthly * pct; }
+      if (p.data.paidBy === ctx.myKey) { A += st.shareMonthly * (1 - pct); if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.shareMonthly * (1 - pct); }
     }
   }
   let ajenaLeft = 0;
   for (const l of ctx.ledger) {
-    const st = ledgerStatus(l.data, monthFor(l.data.payShift ?? payShiftOf(cardOfName(l.data.card))));
+    const lm = monthFor(l.data.payShift ?? payShiftOf(cardOfName(l.data.card)));
+    const st = ledgerStatus(l.data, lm);
     if (l.data.dir === 'owe') {
       if (l.data.goalId) { addDM(l.data.goalId, st.left); DMowe += st.left; continue; }
       if (l.data.kind === 'installments' && st.due && !st.paidThisMonth) { D1 += st.monthly; br.owe += st.monthly; }
     } else if (l.data.kind === 'installments' && !l.data.dudoso) {
-      ajenaLeft += st.left;
+      ajenaLeft += st.cardLeft;
       const cn = norm(l.data.card ?? '');
       const cid = cn ? accs.find(x => x.owner === ctx.me && x.data.type === 'credit' && norm(x.data.name) === cn)?.id : undefined;
-      if (cid) ajenaByCard[cid] = (ajenaByCard[cid] ?? 0) + st.left;
-      if (st.due && !st.paidThisMonth) {
+      if (cid) ajenaByCard[cid] = (ajenaByCard[cid] ?? 0) + st.cardLeft;
+      if (st.due && !st.paidThisMonth && !(l.data.bankThrough && l.data.bankThrough >= lm)) {
         A += st.monthly;
         // si su tarjeta tiene estado de cuenta, esa parte ya viene dentro del estado: se quita de ahi para no contarla dos veces
         if (cid) cardA[cid] = (cardA[cid] ?? 0) + st.monthly;
@@ -620,9 +627,10 @@ export function patrimonio(accs: Item<Account>[], ctx: BudgetCtx, txns: Item<Txn
   const tarjetas = accs.filter(a => a.data.type === 'credit' && inTotal(a)).reduce((s, a) => s - accountBalance(a, txns, plans, oweLeft), 0);
   const pct = casaPct(ctx, ym(new Date()));
   const house = plans.filter(p => p.owner === null);
-  const housePay = house.filter(p => p.data.paidBy === ctx.myKey).reduce((s, p) => s + planStatus(p.data).remainingAmount, 0);   // yo soy el titular
-  const houseOwe = house.filter(p => p.data.paidBy !== ctx.myKey).reduce((s, p) => s + planStatus(p.data).remainingAmount, 0);  // el titular es otro
-  const ajenaLedger = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'installments' && !l.data.dudoso).reduce((s, l) => s + ledgerStatus(l.data).left, 0);
+  const housePay = house.filter(p => p.data.paidBy === ctx.myKey).reduce((s, p) => s + planStatus(p.data).shareRemaining, 0);   // yo soy el titular
+  const houseOwe = house.filter(p => p.data.paidBy !== ctx.myKey).reduce((s, p) => s + planStatus(p.data).shareRemaining, 0);  // el titular es otro
+  const ajenaLedger = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'installments' && !l.data.dudoso).reduce((s, l) => s + ledgerStatus(l.data).cardLeft, 0);
+  const cobrarMeses = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'installments' && !l.data.dudoso).reduce((s, l) => s + ledgerStatus(l.data).receivable, 0);  // mensualidades que ya pague al banco y aun no me reembolsan
   const casaAjena = housePay * (1 - pct);
   const ajenaPlanes = plans.filter(p => p.owner === ctx.me).reduce((s, p) => s + planAjenaLeft(p.data, mm => casaPct(ctx, mm)), 0);
   const ajena = ajenaLedger + casaAjena + ajenaPlanes;
@@ -630,7 +638,7 @@ export function patrimonio(accs: Item<Account>[], ctx: BudgetCtx, txns: Item<Txn
   const porPagarPersonas = ctx.ledger.filter(l => l.data.dir === 'owe').reduce((s, l) => s + ledgerStatus(l.data).left, 0);
   const porPagarCasa = houseOwe * pct;
   const porPagar = porPagarPersonas + porPagarCasa;
-  const porCobrar = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'lump' && !l.data.dudoso && !l.data.aside).reduce((s, l) => s + ledgerStatus(l.data).left, 0);
+  const porCobrar = ctx.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'lump' && !l.data.dudoso && !l.data.aside).reduce((s, l) => s + ledgerStatus(l.data).left, 0) + cobrarMeses;
   const a = cuentas - deudaPropia - porPagar;
   return { cuentas, tarjetas, ajena, ajenaLedger, casaAjena, ajenaPlanes, deudaPropia, porPagar, porPagarPersonas, porPagarCasa, housePct: pct, houseOweTotal: houseOwe, porCobrar, a, b: a + porCobrar };
 }

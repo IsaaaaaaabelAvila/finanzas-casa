@@ -90,7 +90,7 @@ export default function Accounts({ d }: { d: Data }) {
             <div className="row"><small>Por pagar (personas y casa)</small><span className="neg">−{money(pt.porPagar)}</span></div>
             <div className="row"><small>· A personas (compras que pagaron por ti)</small><span className="neg">−{money(pt.porPagarPersonas)}</span></div>
             {pt.houseOweTotal > 0.5 && <div className="row"><small>· De la casa (tu {(pt.housePct * 100).toFixed(1)}% de {money(pt.houseOweTotal)} que falta)</small><span className="neg">−{money(pt.porPagarCasa)}</span></div>}
-            <div className="row"><small>Por cobrar, pagos unicos (sin dudosos)</small><span>{money(pt.porCobrar)}</span></div>
+            <div className="row"><small>Por cobrar: pagos unicos y mensualidades ya pagadas por mi (sin dudosos)</small><span>{money(pt.porCobrar)}</span></div>
             <div className="row"><small>Patrimonio con por cobrar (B)</small><b className={pt.b >= 0 ? 'pos' : 'neg'}>{money(pt.b)}</b></div>
             {pt.ajena > 0.5 && <small>Las mensualidades que pagas por otros ya estan restadas de tu deuda, por eso no se suman otra vez en (B).</small>}
           </Card>

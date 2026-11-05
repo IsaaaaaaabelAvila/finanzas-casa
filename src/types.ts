@@ -44,6 +44,7 @@ export interface Plan {
   partes?: { key: string; pct?: number }[];  // responsables distintos al titular y su % (sin %: el que corresponde por ingresos en cada mensualidad)
   reimb?: string[];     // meses (YYYY-MM) cuya parte ajena ya fue reembolsada al titular
   cardId?: string;      // tarjeta de la compra, solo para marcar mensualidades al pagarla (no afecta el saldo)
+  covered?: number;     // parte del total que ya cubrio otra persona o un reembolso a la tarjeta: la tarjeta cobra `total`, la casa reparte total - covered
 }
 export interface Goal {
   name: string;
@@ -80,6 +81,7 @@ export interface LedgerItem {
   goalId?: string;                // se paga con el dinero de esta meta; no resta del libre
   payShift?: number;              // meses entre el estado de cuenta y su pago (1 si la tarjeta paga al mes siguiente del corte); sin tarjeta propia
   dudoso?: boolean;               // por cobrar dudoso: no cuenta en el patrimonio (b)
+  bankThrough?: string;           // me deben (a meses): ya pague a la tarjeta hasta este mes de estado de cuenta (inclusive); lo no reembolsado de esos meses es por cobrar
 }
 export interface PlanCfg { from: string; mode: 'budget' | 'saving'; amount: number; income?: number }
 export interface CarryCfg { from: string; pos: number; neg: number }  // % del sobrante / faltante que pasa al mes siguiente

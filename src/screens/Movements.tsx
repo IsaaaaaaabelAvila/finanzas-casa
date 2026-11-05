@@ -149,6 +149,7 @@ export default function Movements({ d }: { d: Data }) {
       save('plan', { ...x.p.data, paid: [...new Set([...(x.p.data.paid ?? []), payMonth])].sort() }, x.p.owner, x.p.id);
       if (x.p.data.goalId) releaseFromGoal(d, `${x.p.id}:${payMonth}`, x.p.data.goalId, x.st.monthly, x.p.data.description);
     }
+    if (!editId && payInfo && markPlans) for (const x of payInfo.others) if (!x.l.data.bankThrough || x.l.data.bankThrough < payMonth) save('ledger', { ...x.l.data, bankThrough: payMonth }, d.me, x.l.id);
     const linked = editId ? planOf(editId) : undefined;
     if (linked) save('plan', { ...linked.data, total: amt, startDate: date, description: t.note || t.category, category: t.category, accountId: acc }, linked.owner, linked.id);
     resetForm();

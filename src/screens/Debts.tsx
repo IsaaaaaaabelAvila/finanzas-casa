@@ -224,9 +224,21 @@ export default function Debts({ d }: { d: Data }) {
                     <div className="chips">
                       {st.schedule.map(m => {
                         const paid = (i.data.paid ?? []).includes(m);
-                        return <button key={m} className={`chip-m ${paid ? 'paid' : ''} ${m === nowM ? 'now' : ''}`} onClick={() => toggle(i.id, i.data, m)}>{monthLabel(m)}</button>;
+                        const bank = !paid && !!i.data.bankThrough && m <= i.data.bankThrough;
+                        return <button key={m} className={`chip-m ${paid ? 'paid' : ''} ${m === nowM ? 'now' : ''}`} style={bank ? { borderStyle: 'dashed', borderColor: '#d9a400' } : undefined} title={bank ? 'Ya la pague al banco y aun no me la reembolsan' : undefined} onClick={() => toggle(i.id, i.data, m)}>{monthLabel(m)}</button>;
                       })}
                     </div>
+                    {dir === 'owed' && (
+                      <>
+                        <small>Reembolsadas {st.paidCount} de {i.data.months} · pagadas por mi al banco {st.schedule.filter(m => i.data.bankThrough && m <= i.data.bankThrough).length} de {i.data.months}{st.receivable > 0.5 ? ` · por cobrar de lo ya pagado ${money(st.receivable)}` : ''}</small>
+                        <label className="field" style={{ margin: '6px 0 0' }}><span>Ya pague a la tarjeta hasta (los meses punteados)</span>
+                          <select value={i.data.bankThrough ?? ''} onChange={e => save('ledger', { ...i.data, bankThrough: e.target.value || undefined }, d.me, i.id)}>
+                            <option value="">— ninguno —</option>
+                            {st.schedule.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                          </select>
+                        </label>
+                      </>
+                    )}
                   </>
                 ) : (
                   <>

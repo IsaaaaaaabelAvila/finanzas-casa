@@ -45,6 +45,7 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
 
   // resumen neto de todo lo que falta a meses (solo vista Todo)
   const rem = (p: { data: Plan }) => planStatus(p.data, nowM).remainingAmount;
+  const remShare = (p: { data: Plan }) => planStatus(p.data, nowM).shareRemaining;
   const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
   const own = d.plans.filter(p => p.owner === d.me);
   const house = d.plans.filter(p => p.owner === null);
@@ -52,8 +53,8 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
   const ownTotal = sum(own.map(rem));
   const ownMine = ownTotal - d.pat.ajenaPlanes;
   const byOthers = d.pat.ajenaLedger + d.pat.ajenaPlanes;
-  const houseTotal = sum(house.map(rem));
-  const housePay = sum(house.filter(p => p.data.paidBy === d.myKey).map(rem));
+  const houseTotal = sum(house.map(remShare));
+  const housePay = sum(house.filter(p => p.data.paidBy === d.myKey).map(remShare));
   const houseOwe = houseTotal - housePay;
   const grossAll = ownTotal + d.pat.ajenaLedger + houseTotal;
   const netAll = ownMine + houseTotal * pctMe;
@@ -225,6 +226,12 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
                   </select>
                 </label>
               )
+          )}
+          {p.owner === null && (
+            <small>
+              {p.data.covered ? `Cubierto aparte ${money(p.data.covered)} · la casa reparte ${money(st.shareMonthly)}/mes` : 'Sin cubierto aparte'}
+              {' · '}<button className="link" style={{ padding: 0 }} onClick={() => { const r = prompt('¿Cuanto del total ya cubrio otra persona o un reembolso a la tarjeta? (0 = nada)', String(p.data.covered ?? 0)); if (r === null) return; const v = Math.max(0, num(r)); save('plan', { ...p.data, covered: v > 0 ? v : undefined }, p.owner, p.id); }}>{p.data.covered ? 'Cambiar' : 'Agregar'}</button>
+            </small>
           )}
           {p.data.goalId && (
             <small>Se paga con la meta {d.allGoals.find(g => g.id === p.data.goalId)?.data.name ?? '—'} · <button className="link" style={{ padding: 0 }} onClick={() => save('plan', { ...p.data, goalId: undefined }, p.owner, p.id)}>Quitar</button></small>
