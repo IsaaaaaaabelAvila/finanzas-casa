@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { addMonthsYm, ledgerStatus, money, monthLabel, today, ym } from '../calc';
 import { remove, save } from '../store';
 import { releaseFromGoal, unrelease } from '../bag';
@@ -22,6 +22,9 @@ export default function Debts({ d }: { d: Data }) {
   const accs = d.allAccounts.filter(a => (a.owner === d.me || a.owner === null) && a.data.auto !== 'owe');
   const [payFor, setPayFor] = useState<null | { id: string; it: LedgerItem; month?: string; amount: string }>(null);
   const [payAcc, setPayAcc] = useState('');
+  const payRef = useRef<HTMLDivElement>(null);
+  // el formulario de cobro/pago sale arriba: llevarlo a la vista para que se note
+  useEffect(() => { if (payFor) payRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [payFor?.id, payFor?.month]);
 
   const items = d.ledger.filter(i => i.data.dir === dir);
   const persons = [...new Set(items.map(i => i.data.person))].sort();
@@ -184,7 +187,7 @@ export default function Debts({ d }: { d: Data }) {
       )}
 
       {payFor && (
-        <Card title={dir === 'owe' ? 'Registrar pago' : 'Registrar cobro'}>
+        <div ref={payRef}><Card title={dir === 'owe' ? 'Registrar pago' : 'Registrar cobro'}>
           <p>{payFor.it.concept} · {payFor.it.person}{payFor.month ? ` · ${monthLabel(payFor.month)}` : ''}</p>
           {dir === 'owed' && payFor.month && (payFor.it.credit ?? 0) > 0.5 && <small>Tiene saldo a favor de {money(payFor.it.credit ?? 0)}. Si le sobra, queda como saldo a favor para el siguiente mes.</small>}
           {dir === 'owed' && payFor.month && num(payFor.amount) > (payFor.it.monthly ?? 0) + 0.5 && <small>Lo que pase de {money(payFor.it.monthly ?? 0)} queda como saldo a favor (apartado) para los siguientes meses.</small>}
@@ -199,7 +202,8 @@ export default function Debts({ d }: { d: Data }) {
             <button onClick={() => confirmPay(false)} disabled={!payFor.month && !num(payFor.amount)}>Solo marcar, sin movimiento</button>
             <button className="link" onClick={() => setPayFor(null)}>Cancelar</button>
           </div>
-        </Card>
+          {accs.length === 0 && <small className="error">No hay cuentas para registrar el movimiento; usa "Solo marcar, sin movimiento".</small>}
+        </Card></div>
       )}
 
       {persons.length === 0 && <Card><Empty>No hay deudas en esta lista.</Empty></Card>}
