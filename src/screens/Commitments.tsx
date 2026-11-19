@@ -30,11 +30,15 @@ export default function Commitments({ d }: { d: Data }) {
               <div>
                 <b style={m === nowM ? { color: 'var(--brand)' } : undefined}>{monthLabel(m)}</b>
                 <small>
-                  {[c.own > 0 && `mis compras ${money(c.own)}`, c.owe > 0 && `deudas a personas ${money(c.owe)}`, c.casa > 0 && `mi parte de la casa ${money(c.casa)}`].filter(Boolean).join(' · ') || 'sin compromisos'}
-                  {c.advanced > 0 ? ` · adelantas por otros ${money(c.advanced)} (no cuenta)` : ''}
+                  Tu parte: {[c.own > 0 && `mis compras ${money(c.own)}`, c.owe > 0 && `deudas a personas ${money(c.owe)}`, c.casa > 0 && `mi parte de la casa ${money(c.casa)}`].filter(Boolean).join(' · ') || 'sin compromisos'}
                 </small>
+                {c.reimb > 0.005 && (
+                  <small>
+                    Por reembolsar (no se aparta): {[c.advanced > 0.005 && `de otros ${money(c.advanced)}`, c.ajena > 0.005 && `parte ajena de mis compras ${money(c.ajena)}`, c.casaAjena > 0.005 && `parte de los demas en la casa ${money(c.casaAjena)}`].filter(Boolean).join(' · ')} = {money(c.reimb)}
+                  </small>
+                )}
               </div>
-              <b>{money(c.total)}</b>
+              <b title="Tu parte: lo que se aparta">{money(c.total)}</b>
             </div>
           );
         })}

@@ -94,4 +94,14 @@ export interface Status { person: string; level: 'green' | 'amber' | 'red'; mont
 export interface Item<T> { id: string; owner: string | null; data: T }
 
 export const INCOME_CATS = ['Nomina', 'Rendimientos', 'Freelance', 'Reembolso', 'Regalo', 'Otro ingreso'];
-export const EXPENSE_CATS = ['Vivienda', 'Automóvil', 'Salud', 'Super', 'Salidas', 'Compras', 'Otros'];
+export const EXPENSE_CATS = ['Vivienda y servicios', 'Salidas', 'Automóvil', 'Salud', 'Mascota', 'Ocio y viajes', 'Compras y personal', 'Negocio', 'Imprevistos', 'Otros'];
+export const CAT_ICON: Record<string, string> = {
+  'Vivienda y servicios': '🏠', 'Salidas': '🍽️', 'Automóvil': '🚗', 'Salud': '💊', 'Mascota': '🐾',
+  'Ocio y viajes': '✈️', 'Compras y personal': '🛍️', 'Negocio': '💼', 'Imprevistos': '🛟', 'Otros': '📦'
+};
+export const CAT_HINT: Record<string, string> = { 'Imprevistos': 'se pagan de la reserva', 'Otros': 'ultimo recurso' };
+/** Nombre actual de una categoria (los movimientos viejos con nombres anteriores se muestran con el nombre nuevo). */
+const CAT_ALIAS: Record<string, string> = { 'Vivienda': 'Vivienda y servicios', 'Super': 'Vivienda y servicios', 'Compras': 'Compras y personal' };
+export const normCat = (c?: string) => (c ? CAT_ALIAS[c] ?? c : 'Otros');
+/** Texto de una categoria para listas: icono + nombre. */
+export const catLabel = (c?: string) => { const n = normCat(c); return CAT_ICON[n] ? `${CAT_ICON[n]} ${n}` : n; };

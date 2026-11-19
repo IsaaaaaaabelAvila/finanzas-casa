@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { budgetCtx } from '../budget';
-import { casaPct, firstPaymentMonth, monthLabel, money, planAjenaLeft, planOtherPct, planStatus, today, ym } from '../calc';
+import { casaPct, firstPaymentMonth, ledgerStatus, monthLabel, money, planAjenaLeft, planOtherPct, planStatus, today, ym } from '../calc';
 import { remove, save } from '../store';
-import { EXPENSE_CATS, Plan } from '../types';
-import { Bar, Card, Data, Empty, Field, Scope, num, ownerLabel } from '../ui';
+import { CAT_ICON, EXPENSE_CATS, Plan } from '../types';
+import { Bar, Card, Data, Empty, Field, num, ownerLabel } from '../ui';
 import Debts from './Debts';
 import { releaseFromGoal, unrelease } from '../bag';
 import Commitments from './Commitments';
 
-function PlansList({ d, scope }: { d: Data; scope: Scope }) {
+type Who = 'all' | 'mine' | 'house' | 'others';
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+function PlansList({ d, goDebts }: { d: Data; goDebts: () => void }) {
   const nowM = ym(new Date());
   const [open, setOpen] = useState(false);
   const [desc, setDesc] = useState('');
@@ -17,7 +20,9 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
   const [start, setStart] = useState(today());
   const [first, setFirst] = useState(nowM);
   const [firstTouched, setFirstTouched] = useState(false);
-  const [category, setCategory] = useState('Compras');
+  const [category, setCategory] = useState('');
+  const [catErr, setCatErr] = useState(false);
+  const [who, setWho] = useState<Who>('all');
   const [accountId, setAccountId] = useState('');
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
@@ -34,14 +39,46 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
   const mineAt = (m: string) => casaPct(bctx, m);
   // una compra liquidada cuyo calendario ya termino deja de mostrarse
   const cardOf = (p: Plan) => p.cardId ?? p.accountId ?? '';
-  const allItems = d.plans.map(p => ({ p, st: planStatus(p.data, nowM) })).filter(x => !(x.st.finished && x.st.schedule[x.st.schedule.length - 1] < nowM)).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
+  type Row = { k: 'plan'; id: string; grp: 'mine' | 'house'; p: (typeof d.plans)[number]; st: ReturnType<typeof planStatus>; card: string; monthly: number; rem: number; yours: number; yoursRem: number }
+    | { k: 'led'; id: string; grp: 'others'; l: (typeof d.ledger)[number]; st: ReturnType<typeof ledgerStatus>; card: string; monthly: number; rem: number; yours: number; yoursRem: number };
+  const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const planRows: Row[] = d.plans.map(p => {
+    const st = planStatus(p.data, nowM);
+    const mine = p.owner === d.me;
+    const rem = r2(st.remainingAmount), monthly = r2(st.monthly);
+    // mi parte: en mis compras lo que no es de otro responsable; en las de la casa mi % de lo que reparte la casa
+    const yours = mine ? r2(st.monthly * (1 - planOtherPct(p.data, mineAt(nowM)))) : r2(st.shareMonthly * d.pat.housePct);
+    const yoursRem = mine ? r2(rem - planAjenaLeft(p.data, mineAt)) : r2(st.shareRemaining * d.pat.housePct);
+    return { k: 'plan' as const, id: p.id, grp: mine ? 'mine' as const : 'house' as const, p, st, card: cardOf(p.data), monthly, rem, yours, yoursRem };
+  });
+  const ledRows: Row[] = d.ledger.filter(l => l.data.dir === 'owed' && l.data.kind === 'installments').map(l => {
+    const st = ledgerStatus(l.data, nowM);
+    const card = d.allAccounts.find(a => l.data.card && norm(a.data.name) === norm(l.data.card))?.id ?? '';
+    return { k: 'led' as const, id: l.id, grp: 'others' as const, l, st, card, monthly: r2(st.monthly), rem: r2(st.monthly * st.remainingMonths), yours: 0, yoursRem: 0 };
+  });
+  const lastM = (r: Row) => r.st.schedule[r.st.schedule.length - 1];
+  const allItems = [...planRows, ...ledRows].filter(r => !(r.st.finished && lastM(r) < nowM)).sort((a, b) => Number(a.st.finished) - Number(b.st.finished));
+  const inWho = (r: Row) => who === 'all' || r.grp === who;
   // tarjetas que aparecen en la lista, para filtrar
-  const cardIds = [...new Set(allItems.map(x => cardOf(x.p.data)))].sort((a, b) => (accName(a) ?? 'zzz').localeCompare(accName(b) ?? 'zzz'));
+  const cardIds = [...new Set(allItems.filter(inWho).map(r => r.card))].sort((a, b) => (accName(a) ?? 'zzz').localeCompare(accName(b) ?? 'zzz'));
   const cardLabel = (id: string) => (id ? accName(id) ?? 'Tarjeta de la casa' : 'Sin tarjeta');
-  const items = cardF === '' ? allItems : allItems.filter(x => cardOf(x.p.data) === (cardF === '__none' ? '' : cardF));
-  const monthly = items.filter(x => x.st.due && !x.st.finished).reduce((a, x) => a + x.st.monthly, 0);
-  const pendingMonth = items.filter(x => x.st.due && !x.st.paidThisMonth).reduce((a, x) => a + x.st.monthly, 0);
-  const pending = items.reduce((a, x) => a + x.st.remainingAmount, 0);
+  const items = allItems.filter(inWho).filter(r => cardF === '' || r.card === (cardF === '__none' ? '' : cardF));
+  // cada mensualidad y cada saldo se redondea a centavos antes de sumar: Todo = Mio + Casa + De otros
+  const tot = (rows: Row[]) => {
+    const act = rows.filter(r => r.st.due && !r.st.finished);
+    return {
+      monthly: act.reduce((a, r) => a + r.monthly, 0),
+      pendingMonth: act.filter(r => !r.st.paidThisMonth).reduce((a, r) => a + r.monthly, 0),
+      pending: rows.reduce((a, r) => a + r.rem, 0),
+      yours: act.reduce((a, r) => a + r.yours, 0),
+      yoursRem: rows.reduce((a, r) => a + r.yoursRem, 0)
+    };
+  };
+  const T = tot(items);
+  const Tu = tot(items.filter(r => r.grp !== 'others'));
+  const To = tot(items.filter(r => r.grp === 'others'));
+  const monthly = T.monthly, pendingMonth = T.pendingMonth, pending = T.pending;
+  const whoLabel = who === 'all' ? 'Todo' : who === 'mine' ? 'Mio' : who === 'house' ? 'Casa' : 'De otros';
 
   // resumen neto de todo lo que falta a meses (solo vista Todo)
   const rem = (p: { data: Plan }) => planStatus(p.data, nowM).remainingAmount;
@@ -68,6 +105,7 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
 
   function submit() {
     if (!desc.trim() || !num(total)) return;
+    if (!category) { setCatErr(true); return; }
     const plan: Plan = {
       description: desc.trim(), total: num(total), months: Math.max(1, Math.round(num(months))),
       startDate: start, firstMonth, paid: [], category, goalId: goalId || undefined,
@@ -76,7 +114,7 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
       partes: !shared && partKey ? [{ key: partKey, pct: num(partPct) > 0 ? Math.min(100, num(partPct)) : undefined }] : undefined
     };
     save('plan', plan, shared ? null : d.me);
-    setDesc(''); setTotal(''); setOpen(false);
+    setDesc(''); setTotal(''); setCategory(''); setCatErr(false); setOpen(false);
   }
 
   function toggle(id: string, owner: string | null, p: Plan, m: string) {
@@ -88,7 +126,10 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
 
   return (
     <>
-      <div className="month-nav"><b>Pagos a meses</b><button className="primary" onClick={() => setOpen(!open)}>{open ? 'Cerrar' : '+ Nuevo'}</button></div>
+      <div className="month-nav"><b>Compras a meses</b><button className="primary" onClick={() => setOpen(!open)}>{open ? 'Cerrar' : '+ Nuevo'}</button></div>
+      <div className="chips" style={{ margin: '4px 0 8px' }}>
+        {([['all', 'Todo'], ['mine', 'Mio'], ['house', 'Casa'], ['others', 'De otros']] as [Who, string][]).map(([k, l]) => <button key={k} className={`chip-m ${who === k ? 'paid' : ''}`} onClick={() => { setWho(k); setCardF(''); }}>{l}</button>)}
+      </div>
       {cardIds.length > 1 && (
         <div className="chips" style={{ margin: '4px 0 8px' }}>
           <button className={`chip-m ${cardF === '' ? 'paid' : ''}`} onClick={() => setCardF('')}>Todas</button>
@@ -97,12 +138,22 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
       )}
       <div className="stats">
         <div className="stat"><small>Mensualidades de {monthLabel(nowM)}</small><b>{money(monthly)}</b></div>
-        <div className="stat"><small>Falta marcar este mes</small><b className={pendingMonth > 0 ? 'neg' : 'pos'}>{money(pendingMonth)}</b></div>
+        <div className="stat"><small>{who === 'others' ? 'Falta que te reembolsen' : 'Falta marcar este mes'}</small><b className={pendingMonth > 0 ? 'neg' : 'pos'}>{money(pendingMonth)}</b></div>
         <div className="stat"><small>Total pendiente</small><b className="neg">{money(pending)}</b></div>
       </div>
+      {who === 'all' && (
+        <Card>
+          <div className="row"><b>Tu parte (Mio + Casa)</b><span>{money(Tu.monthly)}/mes · pendiente {money(Tu.pending)}</span></div>
+          <div className="row"><b>Por reembolsar (De otros)</b><span>{money(To.monthly)}/mes · pendiente {money(To.pending)}</span></div>
+          <small>Total del mes = {money(Tu.monthly)} + {money(To.monthly)} = {money(Tu.monthly + To.monthly)}. Solo lo que es tuyo de verdad (despues de lo que reembolsan otros y tu % de la casa): {money(Tu.yours)}/mes · pendiente {money(Tu.yoursRem)}.</small>
+        </Card>
+      )}
+      {who !== 'all' && who !== 'others' && (
+        <small style={{ display: 'block', margin: '0 0 8px' }}>De {whoLabel}, solo tu parte: {money(T.yours)}/mes · pendiente {money(T.yoursRem)}.</small>
+      )}
 
-      {scope === 'all' && cardF === '' && (
-        <Card title="Todo lo que se debe aun a meses">
+      {who === 'all' && cardF === '' && (
+        <Card title="Todo lo que se debe aun a meses (neto)">
           <small>TOTAL PENDIENTE (BRUTO)</small>
           <div className="big neg" style={{ fontSize: 34, lineHeight: 1.1 }}>{money(grossAll)}</div>
           <div className="row"><small>Mis compras a meses (solo mi parte)</small><span>{money(ownMine)}</span></div>
@@ -140,7 +191,7 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
           </Field>
           <Field label="Mes de la primera mensualidad"><input type="month" value={firstMonth} onChange={e => { setFirst(e.target.value); setFirstTouched(true); }} /></Field>
           {auto && !firstTouched && chosen && <p className="hint">Calculado con el corte (dia {chosen.data.cutDay}) y el pago (dia {chosen.data.payDay}) de {chosen.data.name}: la compra del {start} entra al corte de ese mes y se paga en {monthLabel(auto)}.</p>}
-          <Field label="Categoria"><select value={category} onChange={e => setCategory(e.target.value)}>{EXPENSE_CATS.map(c => <option key={c}>{c}</option>)}</select></Field>
+          <Field label="Categoria (obligatoria)"><select value={category} onChange={e => { setCategory(e.target.value); setCatErr(false); }}><option value="" disabled>— elegir categoria —</option>{EXPENSE_CATS.map(c => <option key={c} value={c}>{CAT_ICON[c] ? `${CAT_ICON[c]} ${c}` : c}</option>)}</select>{catErr && !category && <small className="error">Elige una categoria para guardar.</small>}</Field>
           {d.goals.length > 0 && !shared && (
             <>
               <label className="check"><input type="checkbox" checked={goalId !== ''} onChange={e => setGoalId(e.target.checked ? d.goals[0].id : '')} /> Pagar con una meta (las mensualidades no restan de mi libre)</label>
@@ -176,8 +227,21 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
         </Card>
       )}
 
-      {items.length === 0 && <Card><Empty>No hay pagos a meses en esta vista.</Empty></Card>}
-      {items.map(({ p, st }) => (
+      {items.length === 0 && <Card><Empty>No hay compras a meses en esta vista.</Empty></Card>}
+      {items.map(r => r.k === 'led' ? (
+        <Card key={r.id}>
+          <div className="row"><b>{r.l.data.concept} · {r.l.data.person}</b><span>{money(r.st.monthly)}/mes</span></div>
+          <Bar pct={((r.st.paidCount) / Math.max(1, r.l.data.months ?? 1)) * 100} />
+          <small>
+            {r.st.finished ? 'Liquidado' : `${r.st.paidCount} de ${r.l.data.months} reembolsadas · faltan ${r.st.remainingMonths} (${money(r.rem)})`}
+            {' · De otros'}{r.l.data.card ? ` · ${r.l.data.card}` : ''}
+          </small>
+          <div className="chips">
+            {r.st.schedule.map(m => <span key={m} className={`chip-m ${(r.l.data.paid ?? []).includes(m) ? 'paid' : ''} ${m === nowM ? 'now' : ''}`}>{monthLabel(m)}</span>)}
+          </div>
+          <small>Es lo que te deben (no es tu gasto). El reembolso se marca en <button className="link" style={{ padding: 0 }} onClick={goDebts}>Deudas con personas</button>.</small>
+        </Card>
+      ) : (() => { const { p, st } = r; return (
         <Card key={p.id}>
           <div className="row"><b>{p.data.description}</b><span>{money(st.monthly)}/mes</span></div>
           <Bar pct={(st.paidCount / p.data.months) * 100} />
@@ -241,21 +305,22 @@ function PlansList({ d, scope }: { d: Data; scope: Scope }) {
           )}
           <div className="row-actions"><button className="link danger" onClick={() => confirm('¿Borrar?') && remove(p.id)}>Borrar</button></div>
         </Card>
-      ))}
+      ); })())}
     </>
   );
 }
 
-export default function Plans({ d, scope }: { d: Data; scope: Scope }) {
+export default function Plans({ d }: { d: Data }) {
   const [view, setView] = useState<'plans' | 'debts' | 'commit'>('plans');
   return (
     <>
+      <div className="month-nav"><b>Pagos y deudas</b></div>
       <div className="seg" style={{ marginBottom: 12 }}>
         <button className={view === 'plans' ? 'on' : ''} onClick={() => setView('plans')}>Compras a meses</button>
         <button className={view === 'debts' ? 'on' : ''} onClick={() => setView('debts')}>Deudas con personas</button>
         <button className={view === 'commit' ? 'on' : ''} onClick={() => setView('commit')}>Compromisos</button>
       </div>
-      {view === 'plans' ? <PlansList d={d} scope={scope} /> : view === 'debts' ? <Debts d={d} /> : <Commitments d={d} />}
+      {view === 'plans' ? <PlansList d={d} goDebts={() => setView('debts')} /> : view === 'debts' ? <Debts d={d} /> : <Commitments d={d} />}
     </>
   );
 }

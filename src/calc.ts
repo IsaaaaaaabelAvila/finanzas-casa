@@ -165,7 +165,9 @@ export function houseSummary(month: string, people: Person[], payrolls: Item<Pay
   const missing = people.filter(p => amountIn(month, p.key) <= 0).map(p => p.name);
   const incomeOf = (k: string) => payrolls.filter(p => p.data.month === base && p.data.person === k).reduce((a, p) => a + p.data.amount, 0);
   const totalIncome = people.reduce((a, p) => a + incomeOf(p.key), 0);
-  const shared = txns.filter(t => t.owner === null && t.data.type === 'expense' && t.data.date.startsWith(month));
+  // un egreso de la casa ligado a un plan (compra pasada a meses) no es pago de contado: se reparte por sus mensualidades
+  const linkedTx = new Set(plans.map(p => p.data.txnId).filter(Boolean) as string[]);
+  const shared = txns.filter(t => t.owner === null && t.data.type === 'expense' && t.data.date.startsWith(month) && !linkedTx.has(t.id));
   const duePlans = plans.filter(p => p.owner === null && planStatus(p.data, month).due);
   const keys = new Set(people.map(p => p.key));
   const unassigned = shared.filter(t => !t.data.paidBy || !keys.has(t.data.paidBy)).reduce((a, t) => a + t.data.amount, 0)
@@ -279,7 +281,10 @@ export function monthCommitments(ctx: BudgetCtx, m: string) {
   const casaTotal = ctx.plans.filter(p => p.owner === null).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? planShare(p.data) : 0); }, 0);
   const casa = casaTotal * casaPct(ctx, m);
   const advanced = ctx.ledger.filter(l => l.data.dir === 'owed').reduce((a, l) => { const s = ledgerStatus(l.data, m); return a + (s.due ? s.monthly : 0); }, 0);
-  return { own, owe, casa, advanced, total: own + owe + casa };
+  // por reembolsar (no cuenta para apartar): parte ajena de mis compras con otros responsables y parte de los demas en la casa que yo pago
+  const ajena = ctx.plans.filter(p => p.owner === ctx.me && !p.data.goalId).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? s.monthly * planOtherPct(p.data, casaPct(ctx, m)) : 0); }, 0);
+  const casaAjena = ctx.plans.filter(p => p.owner === null && p.data.paidBy === ctx.myKey).reduce((a, p) => { const s = planStatus(p.data, m); return a + (s.due ? planShare(p.data) : 0); }, 0) * (1 - casaPct(ctx, m));
+  return { own, owe, casa, advanced, ajena, casaAjena, reimb: advanced + ajena + casaAjena, total: own + owe + casa };
 }
 
 /** Gastado en el mes (sin lo que ya cuenta por mensualidades): mis egresos y mi parte de los egresos de la casa. */
@@ -293,7 +298,7 @@ export function monthSpent(ctx: BudgetCtx, m: string) {
       const led = t.data.ledgerId ? ctx.ledger.find(l => l.id === t.data.ledgerId) : undefined;
       if (led && led.data.kind === 'installments') continue;
       own += t.data.amount;
-    } else if (t.owner === null) casa += t.data.amount;
+    } else if (t.owner === null) { if (linked.has(t.id)) continue; casa += t.data.amount; }
   }
   const casaShare = casa * casaPct(ctx, m);
   return { own, casa: casaShare, total: own + casaShare };

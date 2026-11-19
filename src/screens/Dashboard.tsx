@@ -1,5 +1,6 @@
 import { Tab } from '../App';
 import { allocateGoals, goalPlan, goalSaved, minSpend, money, spendCap, today } from '../calc';
+import { catLabel, normCat } from '../types';
 import { Bar, Card, Data, Empty, Scope } from '../ui';
 import { PartnerMarker } from './FreeCard';
 import BagsCard from './BagsCard';
@@ -24,9 +25,9 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
   const expense = monthTx.filter(t => t.data.type === 'expense').reduce((a, t) => a + t.data.amount * w(t), 0) + planBuys.reduce((a, p) => a + p.data.total, 0);
 
   const byCat: Record<string, number> = {};
-  monthTx.filter(t => t.data.type === 'expense').forEach(t => { byCat[t.data.category] = (byCat[t.data.category] || 0) + t.data.amount * w(t); });
-  planBuys.forEach(p => { const c = p.data.category ?? 'Compras'; byCat[c] = (byCat[c] || 0) + p.data.total; });
-  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  monthTx.filter(t => t.data.type === 'expense').forEach(t => { const k = normCat(t.data.category); byCat[k] = (byCat[k] || 0) + t.data.amount * w(t); });
+  planBuys.forEach(p => { const c = normCat(p.data.category ?? 'Compras'); byCat[c] = (byCat[c] || 0) + p.data.total; });
+  const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
 
   const wd = now.getDay(); // 5 vie, 6 sab, 0 dom, 1 lun
   const reminderDay = [5, 6, 0, 1].includes(wd);
@@ -95,7 +96,7 @@ export default function Dashboard({ d, go, scope }: { d: Data; go: (t: Tab) => v
       <Card title="Egresos por categoria (mes)">
         {cats.length === 0 ? <Empty>Sin egresos este mes.</Empty> : cats.map(([c, v]) => (
           <div key={c} className="row-block">
-            <div className="row"><span>{c}</span><span>{money(v)}</span></div>
+            <div className="row"><span>{catLabel(c)}</span><span>{money(v)}</span></div>
             <Bar pct={(v / (cats[0][1] || 1)) * 100} tone="warn" />
           </div>
         ))}

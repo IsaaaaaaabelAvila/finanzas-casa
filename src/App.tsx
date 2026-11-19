@@ -29,7 +29,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'mov', label: 'Movs' },
   { id: 'acc', label: 'Cuentas' },
   { id: 'house', label: 'Casa' },
-  { id: 'plans', label: 'Meses' },
+  { id: 'plans', label: 'Pagos' },
   { id: 'goals', label: 'Metas' },
   { id: 'set', label: 'Ajustes' }
 ];
@@ -60,6 +60,7 @@ export default function App() {
   useEffect(() => { if (signedIn) startAutoSync(); }, [signedIn]);
 
   const data = useMemo(() => selectData(s, scope), [s.recs, s.me, scope]);
+  const allData = useMemo(() => selectData(s, 'all'), [s.recs, s.me]);
 
   // Reprograma recordatorios (semanales + gasto minimo) cuando cambian los datos
   useEffect(() => {
@@ -140,13 +141,13 @@ export default function App() {
     <div className="shell">
       <header className="top">
         <h1>Finanzas Casa</h1>
-        <div className="scope">
+        {tab !== 'plans' && <div className="scope">
           {(['all', 'mine', 'shared'] as Scope[]).map(k => (
             <button key={k} className={scope === k ? 'on' : ''} onClick={() => setScope(k)}>
               {k === 'all' ? 'Todo' : k === 'mine' ? 'Mio' : 'Casa'}
             </button>
           ))}
-        </div>
+        </div>}
         <button className="sync" onClick={syncNow} title={s.syncError ?? 'Sincronizar'}>
           {s.syncing ? '↻' : s.syncError ? '!' : cloudEnabled ? '●' : '○'}
         </button>
@@ -156,7 +157,7 @@ export default function App() {
         {tab === 'mov' && <Movements d={data} />}
         {tab === 'acc' && <Accounts d={data} />}
         {tab === 'house' && <House d={data} />}
-        {tab === 'plans' && <Plans d={data} scope={scope} />}
+        {tab === 'plans' && <Plans d={allData} />}
         {tab === 'goals' && <Goals d={data} />}
         {tab === 'set' && <Settings d={data} onSignOut={signOut} onLocalSetup={() => setState({ me: 'local' })} />}
       </main>

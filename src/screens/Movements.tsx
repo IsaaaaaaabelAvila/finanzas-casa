@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { releaseFromGoal, unrelease } from '../bag';
 import { accountBalance, addMonthsYm, firstPaymentMonth, ledgerStatus, money, monthLabel, planStatus, splitAt, stmtMonthAt, today, ym } from '../calc';
 import { remove, save } from '../store';
-import { EXPENSE_CATS, INCOME_CATS, Txn, TxnType } from '../types';
+import { CAT_HINT, CAT_ICON, EXPENSE_CATS, INCOME_CATS, Txn, TxnType, catLabel, normCat } from '../types';
 import { Card, Data, Empty, Field, num, ownerLabel } from '../ui';
 
 const shiftMonth = (ym: string, n: number) => {
@@ -20,6 +20,7 @@ export default function Movements({ d }: { d: Data }) {
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [category, setCategory] = useState('');
+  const [catErr, setCatErr] = useState(false);
   const [note, setNote] = useState('');
   const [shared, setShared] = useState(false);
   const [payer, setPayer] = useState('');
@@ -69,7 +70,7 @@ export default function Movements({ d }: { d: Data }) {
   })() : null;
 
   function resetForm() {
-    setEditId(null); setOpen(false); setAmount(''); setNote(''); setCategory(''); setToAccountId(''); setAccountId('');
+    setEditId(null); setOpen(false); setCatErr(false); setAmount(''); setNote(''); setCategory(''); setToAccountId(''); setAccountId('');
     setShared(false); setPayer(''); setDate(today()); setType('expense'); setGoalId(''); setSavePct('50'); setLoanPerson(''); setCollectId('');
   }
 
@@ -77,7 +78,7 @@ export default function Movements({ d }: { d: Data }) {
     setEditId(t.id); setOpen(true);
     setType(t.data.type); setAmount(String(t.data.amount)); setDate(t.data.date);
     setAccountId(t.data.accountId); setToAccountId(t.data.toAccountId ?? '');
-    setCategory(t.data.type === 'transfer' || t.data.type === 'adjust' ? '' : t.data.category);
+    setCategory(t.data.type === 'transfer' || t.data.type === 'adjust' ? '' : t.data.type === 'expense' ? normCat(t.data.category) : t.data.category);
     setNote(t.data.note); setShared(t.owner === null); setPayer(t.data.paidBy ?? ''); setGoalId(t.data.goalId ?? ''); setSavePct(String(t.data.savePct ?? 50));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -100,8 +101,9 @@ export default function Movements({ d }: { d: Data }) {
   function submitOwed() {
     const mine = num(amount);
     if (!mine || !debtAcc || !owedPerson.trim()) return;
-    const concept = note.trim() || category || EXPENSE_CATS[EXPENSE_CATS.length - 1];
-    const cat = category || EXPENSE_CATS[EXPENSE_CATS.length - 1];
+    if (!category) { setCatErr(true); return; }
+    const concept = note.trim() || category;
+    const cat = category;
     // el gasto cuenta como mio (mi parte) y aumenta mi deuda
     const months = Math.max(1, Math.round(num(owedMonths)));
     let lid = '';
@@ -120,6 +122,7 @@ export default function Movements({ d }: { d: Data }) {
     const amt = num(amount);
     const acc = accountId || accs[0]?.id;
     if (!amt || !acc) return;
+    if (type === 'expense' && !category) { setCatErr(true); return; }
     // prestar y cobrar son movimientos entre la cuenta y "por cobrar": ni gasto ni ingreso
     if (!editId && type === 'loan') {
       const who = loanPerson.trim() || 'Persona';
@@ -217,12 +220,12 @@ export default function Movements({ d }: { d: Data }) {
           {accs.length === 0 && <p className="error">Primero crea una cuenta en la pestana Cuentas.</p>}
           <div className="seg">
             {(['expense', 'income', 'transfer', 'loan', 'collect', 'adjust'] as TxnType[]).map(k => (
-              <button key={k} className={type === k ? 'on' : ''} onClick={() => { setType(k); setCategory(''); }}>
+              <button key={k} className={type === k ? 'on' : ''} onClick={() => { setType(k); setCategory(''); setCatErr(false); }}>
                 {k === 'expense' ? 'Egreso' : k === 'income' ? 'Ingreso' : k === 'transfer' ? 'Transfer. / pago tarjeta' : k === 'loan' ? 'Prestamo' : k === 'collect' ? 'Cobro' : 'Ajuste'}
               </button>
             ))}
           </div>
-          <Field label="Concepto (que fue: tacos, uber, renta…)"><input value={note} onChange={e => setNote(e.target.value)} placeholder="Concepto" /></Field>
+          <Field label="Concepto (que fue: tacos, uber, renta…)"><input list="conceptos" value={note} onChange={e => setNote(e.target.value)} placeholder="Concepto" /><datalist id="conceptos">{[...new Set(d.allTxns.map(t => t.data.note).filter(n => n && n.length < 40))].slice(0, 300).map(n => <option key={n} value={n} />)}</datalist></Field>
           <Field label={type === 'adjust' ? 'Monto del ajuste (+ suma, - resta al saldo)' : 'Monto'}><input inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" /></Field>
           <Field label="Fecha"><input type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
           <Field label={type === 'transfer' ? 'Desde la cuenta' : 'Cuenta'}>
@@ -250,10 +253,13 @@ export default function Movements({ d }: { d: Data }) {
             </div>
           )}
           {type !== 'transfer' && type !== 'adjust' && type !== 'loan' && type !== 'collect' && (
-            <Field label="Categoria">
-              <select value={category || cats[cats.length - 1]} onChange={e => setCategory(e.target.value)}>
-                {cats.map(c => <option key={c}>{c}</option>)}
+            <Field label={type === 'expense' ? 'Categoria (obligatoria)' : 'Categoria'}>
+              <select value={type === 'expense' ? category : (category || cats[cats.length - 1])} onChange={e => { setCategory(e.target.value); setCatErr(false); }}>
+                {type === 'expense' && <option value="" disabled>— elegir categoria —</option>}
+                {cats.map(c => <option key={c} value={c}>{type === 'expense' && CAT_ICON[c] ? `${CAT_ICON[c]} ${c}` : c}{type === 'expense' && CAT_HINT[c] ? ` (${CAT_HINT[c]})` : ''}</option>)}
               </select>
+              {catErr && type === 'expense' && !category && <small className="error">Elige una categoria para guardar el egreso.</small>}
+              {type === 'expense' && category === 'Imprevistos' && <small>Es solo una etiqueta. Para pagarlo con tu ahorro de imprevistos, marca abajo "Pagar con una meta".</small>}
             </Field>
           )}
           {type === 'expense' && !shared && d.goals.length > 0 && (
@@ -319,8 +325,8 @@ export default function Movements({ d }: { d: Data }) {
         {rows.length === 0 ? <Empty>{filterAcc ? 'Sin movimientos de esta cuenta este mes.' : 'Sin movimientos este mes.'}</Empty> : rows.map(t => (
           <div key={t.id} className="tx">
             <div>
-              <b>{t.data.note || <span style={{ opacity: 0.6 }}>{t.data.category} (sin concepto)</span>}</b>
-              <small>{t.data.date} · {t.data.category} · {accName(t.data.accountId)}{t.data.toAccountId ? ` → ${accName(t.data.toAccountId)}` : ''} · {ownerLabel(t.owner)}{t.owner === null && t.data.paidBy ? ` · pago ${d.people.find(p => p.key === t.data.paidBy)?.name ?? ''}` : ''}</small>
+              <b>{t.data.note || <span style={{ opacity: 0.6 }}>{t.data.type === 'expense' ? normCat(t.data.category) : t.data.category} (sin concepto)</span>}</b>
+              <small>{t.data.date} · {t.data.type === 'expense' ? catLabel(t.data.category) : t.data.category} · {accName(t.data.accountId)}{t.data.toAccountId ? ` → ${accName(t.data.toAccountId)}` : ''} · {ownerLabel(t.owner)}{t.owner === null && t.data.paidBy ? ` · pago ${d.people.find(p => p.key === t.data.paidBy)?.name ?? ''}` : ''}</small>
               {(() => { const pl = planOf(t.id); if (pl) { const st = planStatus(pl.data); return <span className="chip ontrack" style={{ marginTop: 4, display: 'inline-block' }}>A {pl.data.months} meses · {st.paidCount} de {pl.data.months} pagadas · {money(st.monthly)}/mes</span>; } return t.data.type === 'expense' ? <button className="link" style={{ padding: 0, marginTop: 2 }} onClick={() => toPlan(t)}>Pasar este gasto a meses</button> : null; })()}
             </div>
             <div className="tx-r">
