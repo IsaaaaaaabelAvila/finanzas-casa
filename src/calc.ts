@@ -601,7 +601,13 @@ export function bagState(accs: Item<Account>[], txns: Item<Txn>[], plans: Item<P
   const falta = Math.max(0, D1 + O + L.A - gastoIni);
   const S0 = start.ahorro != null ? start.ahorro : Math.max(0, (t < start.from ? cash : cashBefore(accs, txns, start.from)) - gastoIni - falta);
   let S = S0;
-  for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= start.from) S += incomeToSavings(st, x.data);
+  // nomina depositada en una cuenta fuera del total (ej. Fintual): ya es parte de la parte de ahorro, asi que solo el resto entra a la bolsa
+  const accOf = new Map(accs.map(a => [a.id, a]));
+  for (const x of txns) if (x.owner === me && x.data.type === 'income' && x.data.date >= start.from) {
+    const acc = accOf.get(x.data.accountId);
+    const yaAhorrado = st?.nominaAhorroFuera && x.data.category === 'Nomina' && acc && !inTotal(acc) ? x.data.amount : 0;
+    S += incomeToSavings(st, x.data) - yaAhorrado;
+  }
   for (const x of moves) if (x.owner === me && (x.data.date >= start.from || start.ahorro == null) && !x.data.res) S += x.data.amount;  // antes del arranque, mientras no este fijado, los movimientos ajustan la apertura
   const Se = S + L.ADV;  // los adelantos ya estan en las cuentas: se suman a la bolsa de ahorro y se apartan completos
   const B2 = Math.min(w * D2, Math.max(0, Se - DMe));
